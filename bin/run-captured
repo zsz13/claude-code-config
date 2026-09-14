@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""run-captured: run a command whose output is expected to be large, keep the
+complete stdout+stderr in a local capture file, and print only a compact,
+diagnosable summary (exit status, counts, error/warning/summary lines with line
+numbers, tail). The helper's own exit status is the command's exit status.
+
+    run-captured [options] -- CMD [ARGS...]      # exec directly, no shell
+    run-captured [options] 'shell pipeline'      # one string: run via bash -c
+    run-captured --list [N]                      # recent captures
+
+Options:
+    --label NAME     capture file label (default: first word of the command)
+    --tail N         tail lines to show (default 12 on success, 40 on failure)
+    --max-diag N     cap on surfaced diagnostic lines (default 20 / 80)
+    --match REGEX    extra line pattern to surface (repeatable)
+    --dir PATH       capture directory ($CLAUDE_CAPTURE_DIR, else ~/.cache/claude-hooks/captures)
+    --keep-days N    delete this tool's captures older than N days (default 7)
+
+Guarantees: never changes the command's semantics (no pipefail, no env edits,
+stdin inherited); never reports success when the command failed; stderr is
+captured together with stdout (in write order; a program that block-buffers
+stdout when not on a tty may emit it later than its stderr, exactly as with any
+redirect); output of at most 60 lines and 6000 bytes is passed through verbatim;
+the full capture stays on disk until the age cleanup; fails open (runs the
+command uncaptured if the capture file cannot be created). Known limit: a
+capture consisting of one enormous line (e.g. `\\r` progress bars) is summarised
+in memory. Not for interactive commands or long-running servers.
+"""
+from __future__ import annotations
+
+import argparse
+import collections
+import datetime as _dt
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07")
+DIAG = re.compile(
+    r"(?i)(\b\w*(error|exception)s?\b|\b(fail|failed|failure|failures|traceback|panic|fatal|"
+    r"warning|warnings|warn|deprecated|deprecation|unhandled|rejected)\b)"
+)
+SUMMARY = re.compile(
+    r"^=+ .* =+$|^Tests?:|^Test Files|^test result:|^(ok|FAIL|PASS|---)\s|^Found \d+ error|"
+    r"^All checks passed|^\d+ errors?, \d+ warnings?|^Plan: \d+ to add|^No changes\.|^Success:|"
+    r"\b\d+ (passed|failed|skipped|errors?|warnings?)\b|built in \d|Compiled|Exit code"
+)
+NUMBERS = re.compile(r"\d+")
+# Lines naming an individual test/check are keyed verbatim so that parametrised
+# or numbered cases (test_x[404] vs test_x[500]) are never folded together.
+TEST_ID = re.compile(r"::|\s›\s|^\s*(FAILED|ERROR|PASSED|XFAIL|XPASS)\b|^--- (FAIL|PASS):|^test \S+ \.\.\. |^\s*[✓✗×√]\s")
+CAPTURE_NAME = re.compile(r"^\d{8}-\d{6}-[A-Za-z0-9_.-]{1,40}-\d+\.log$")
+
+
+def human(n: int) -> str:
+    for unit in ("B", "K", "M", "G"):
+        if n < 1024 or unit == "G":
+            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+        n /= 1024  # type: ignore[assignment]
+    return str(n)
+
+
+def capture_dir(explicit: str | None) -> Path:
+    if explicit:
+        return Path(explicit).expanduser()
+    env = os.environ.get("CLAUDE_CAPTURE_DIR")
+    if env:
+        return Path(env).expanduser()
+    return Path.home() / ".cache" / "claude-hooks" / "captures"
+
+
+def cleanup(d: Path, keep_days: int) -> None:
+    """Delete only files this tool created (name pattern) older than keep_days."""
+    try:
+        cutoff = time.time() - keep_days * 86400
+        for p in d.iterdir():
+            if p.is_file() and CAPTURE_NAME.match(p.name) and p.stat().st_mtime < cutoff:
+                p.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def list_captures(d: Path, n: int) -> int:
+    try:
+        files = sorted((p for p in d.iterdir() if CAPTURE_NAME.match(p.name)), key=lambda p: p.stat().st_mtime)
+    except FileNotFoundError:
+        print(f"(no captures in {d})")
+        return 0
+    for p in files[-n:]:
+        st = p.stat()
+        when = _dt.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"{when}  {human(st.st_size):>8}  {p}")
+    if not files:
+        print(f"(no captures in {d})")
+    return 0
+
+
+OPTS_WITH_VALUE = {"--label", "--tail", "--max-diag", "--match", "--dir", "--keep-days"}
+
+
+def parse(argv: list[str]) -> tuple[argparse.Namespace, list[str] | str | None]:
+    """Options are only recognised BEFORE the command: parsing stops at `--` or at the
+    first token that is not one of this tool's options, so the command's own flags
+    (e.g. `docker logs --tail 200`) are never consumed."""
+    ap = argparse.ArgumentParser(add_help=True, usage=__doc__.split("\n\n")[1])
+    ap.add_argument("--label")
+    ap.add_argument("--tail", type=int)
+    ap.add_argument("--max-diag", type=int)
+    ap.add_argument("--match", action="append", default=[])
+    ap.add_argument("--dir")
+    ap.add_argument("--keep-days", type=int, default=7)
+    ap.add_argument("--list", nargs="?", const=10, type=int)
+    own: list[str] = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--":
+            i += 1
+            break
+        if tok in ("-h", "--help") or tok == "--list" or tok.startswith("--list="):
+            own.append(tok)
+            i += 1
+            if tok == "--list" and i < len(argv) and argv[i].isdigit():
+                own.append(argv[i]); i += 1
+            continue
+        name = tok.split("=", 1)[0]
+        if name in OPTS_WITH_VALUE:
+            own.append(tok)
+            i += 1
+            if "=" not in tok and i < len(argv):
+                own.append(argv[i]); i += 1
+            continue
+        break
+    rest = argv[i:]
+    ns = ap.parse_args(own)
+    if not rest:
+        if ns.list is not None:
+            return ns, None
+        ap.error("no command given (use -- CMD ARGS..., or a single quoted shell string)")
+    if len(rest) == 1:
+        return ns, rest[0]
+    return ns, rest  # argv form: executed directly, no shell
+
+
+def label_for(cmd: list[str] | str, explicit: str | None) -> str:
+    if explicit:
+        raw = explicit
+    else:
+        s = cmd if isinstance(cmd, str) else " ".join(cmd)
+        words = [w for w in s.split() if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", w)]
+        skip = {"uv", "run", "npx", "pnpm", "npm", "yarn", "bunx", "python3", "python", "-m", "exec", "poetry", "sudo", "env", "bash", "sh", "-c"}
+        picked = next((w for w in words if w not in skip), words[0] if words else "cmd")
+        raw = os.path.basename(picked)
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", raw)[:40] or "cmd"
+
+
+def run(cmd: list[str] | str, log: Path | None):
+    """Run cmd with output into log (or inherited stdio when log is None)."""
+    child: subprocess.Popen | None = None
+    got_signal = {"sig": None}
+
+    def forward(signum, _frame):
+        got_signal["sig"] = signum
+        if child and child.poll() is None:
+            try:
+                child.send_signal(signum if signum != signal.SIGHUP else signal.SIGTERM)
+            except Exception:
+                pass
+
+    for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(s, forward)
+        except Exception:
+            pass
+
+    kwargs = {"stdout": None, "stderr": None}
+    fh = None
+    if log is not None:
+        fh = open(log, "ab", buffering=0)
+        kwargs = {"stdout": fh, "stderr": subprocess.STDOUT}
+    t0 = time.monotonic()
+    try:
+        if isinstance(cmd, str):
+            child = subprocess.Popen(["bash", "-c", cmd], **kwargs)
+        else:
+            child = subprocess.Popen(cmd, **kwargs)
+    except OSError as e:  # missing binary -> 127, not executable -> 126 (shell conventions)
+        rc = 126 if isinstance(e, PermissionError) else 127
+        if fh:
+            fh.write(f"run-captured: cannot start command: {e}\n".encode())
+            fh.close()
+        else:
+            sys.stderr.write(f"run-captured: cannot start command: {e}\n")
+        return rc, time.monotonic() - t0, None
+    while True:
+        try:
+            rc = child.wait()
+            break
+        except KeyboardInterrupt:
+            forward(signal.SIGINT, None)
+    if fh:
+        fh.close()
+    dur = time.monotonic() - t0
+    if rc < 0:  # died by signal
+        rc = 128 + (-rc)
+    return rc, dur, got_signal["sig"]
+
+
+def normalise(line: str) -> str:
+    if TEST_ID.search(line):
+        return line[:300]
+    return NUMBERS.sub("#", line)[:160]
+
+
+def clip(s: str, n: int = 300) -> str:
+    return s if len(s) <= n else f"{s[:n]}…[+{len(s) - n} chars]"
+
+
+def summarise(log: Path, rc: int, tail_n: int, max_diag: int, extra: list[str]) -> tuple[str, int]:
+    """Return (summary_text, bytes_shown). Streams the file; never loads it whole."""
+    extra_re = [re.compile(p) for p in extra]
+    tail: collections.deque[str] = collections.deque(maxlen=tail_n)
+    diag: list[tuple[int, str]] = []          # (lineno, text) representative lines
+    seen: dict[str, int] = {}                  # normalised -> count
+    order: list[str] = []                      # normalised keys in first-seen order
+    first_line: dict[str, tuple[int, str]] = {}
+    total_lines = 0
+    total_bytes = 0
+    matching = 0
+    small_lines: list[str] = []
+    head: list[str] = []
+    with open(log, "rb") as f:
+        for raw in f:
+            total_lines += 1
+            total_bytes += len(raw)
+            line = ANSI.sub("", raw.decode("utf-8", "replace")).rstrip("\r\n")
+            tail.append(line)
+            if total_lines <= 20:
+                head.append(line)
+            if total_lines <= 60 and total_bytes <= 6000:
+                small_lines.append(line)
+            if (DIAG.search(line) or SUMMARY.search(line) or any(r.search(line) for r in extra_re)) and line.strip():
+                matching += 1
+                key = normalise(line.strip())
+                if key not in seen:
+                    seen[key] = 0
+                    order.append(key)
+                    first_line[key] = (total_lines, line)
+                seen[key] += 1
+    out: list[str] = []
+    if total_lines <= 60 and total_bytes <= 6000:
+        # small output: passthrough is cheaper than a summary
+        out.extend(small_lines if small_lines else ["(no output)"])
+        return "\n".join(out), total_bytes
+    shown = 0
+    if order:
+        out.append(f"diagnostic lines: {matching} matching, {len(order)} distinct; showing up to {max_diag} (L<n> = line in full capture; "
+                   f"`sed -n 'A,Bp' <full>` or `grep -n <pattern> <full>` for context)")
+        for key in order[:max_diag]:
+            ln, text = first_line[key]
+            rep = seen[key]
+            suffix = f"   [+{rep - 1} similar]" if rep > 1 else ""
+            out.append(f"  L{ln}: {clip(text)}{suffix}")
+            shown += 1
+        if len(order) > max_diag:
+            out.append(f"  ... {len(order) - max_diag} more distinct diagnostic lines in the full capture")
+    else:
+        out.append("diagnostic lines: none matched (error/fail/warning/traceback/summary patterns)")
+        if rc != 0:
+            # a failure whose text matches no pattern: show both ends so it is not lost
+            out.append(f"--- head ({len(head)} of {total_lines} lines) ---")
+            out.extend(clip(h) for h in head)
+    out.append(f"--- tail ({len(tail)} of {total_lines} lines) ---")
+    out.extend(clip(t) for t in tail)
+    text = "\n".join(out)
+    return text, len(text.encode())
+
+
+def main(argv: list[str]) -> int:
+    ns, cmd = parse(argv)
+    d = capture_dir(ns.dir)
+    if cmd is None:
+        return list_captures(d, ns.list if ns.list is not None else 10)
+    label = label_for(cmd, ns.label)
+    log: Path | None = None
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        log = d / f"{stamp}-{label}-{os.getpid()}.log"
+        log.touch()
+    except Exception as e:  # fail open: run uncaptured
+        sys.stderr.write(f"run-captured: capture unavailable ({e}); running uncaptured\n")
+        log = None
+    cleanup(d, ns.keep_days) if log else None
+
+    rc, dur, sig = run(cmd, log)
+    if log is None:
+        return rc
+
+    shown_bytes = 0
+    try:
+        tail_n = ns.tail if ns.tail is not None else (12 if rc == 0 else 40)
+        max_diag = ns.max_diag if ns.max_diag is not None else (20 if rc == 0 else 80)
+        body, shown_bytes = summarise(log, rc, tail_n, max_diag, ns.match)
+        size = log.stat().st_size
+        status = "ok" if rc == 0 else "FAILED"
+        cmd_text = cmd if isinstance(cmd, str) else " ".join(cmd)
+        head = f"exit={rc} {status}  ({dur:.1f}s)  captured={human(size)}  full={log}"
+        if sig:
+            head += f"  (interrupted by signal {sig})"
+        print(f"$ {cmd_text[:200]}")
+        print(head)
+        print(body)
+        try:
+            with open(d / "ledger.tsv", "a") as lf:
+                lf.write(f"{_dt.datetime.now().isoformat(timespec='seconds')}\t{label}\t{rc}\t{size}\t{shown_bytes}\t{log}\n")
+        except Exception:
+            pass
+    except Exception as e:  # never hide the result: fall back to raw tail
+        sys.stderr.write(f"run-captured: summary failed ({e}); raw tail follows, full={log}\n")
+        try:
+            with open(log, "rb") as f:
+                data = f.read()[-8000:]
+            sys.stdout.write(data.decode("utf-8", "replace"))
+        except Exception:
+            pass
+        print(f"\nexit={rc}")
+    sys.stdout.flush()
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
