@@ -1,0 +1,43 @@
+# ~/.codex/config.toml — workflow-relevant subset.
+#
+# This is a REDUCED template. The live file on the machine it came from also
+# contains bundled-plugin registrations, MCP server commands, desktop-app UI
+# preferences and per-project trust entries — all of them machine-specific,
+# installer-generated, or private. Those were deliberately left out; see
+# docs/security.md. Copy the parts you want into your own ~/.codex/config.toml.
+
+# Model and reasoning. Check the current model list before copying a name.
+model = "gpt-6-astra"
+model_reasoning_effort = "high"
+service_tier = "default"
+
+# Autonomy. "on-request" lets the agent work without a prompt per command while
+# still requiring approval to leave the sandbox. Escalations are reviewed.
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+sandbox_mode = "workspace-write"
+
+# Live web search is allowed; shell network access is not (see below).
+web_search = "live"
+
+# Bound what a single tool result can put into context. Verbose diagnostics go
+# to a file and get inspected with grep/sed. This is the Codex equivalent of the
+# run-captured helper in bin/.
+tool_output_token_limit = 6000
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 6
+
+# Shell network access crosses the approval boundary; web search is separate.
+[sandbox_workspace_write]
+network_access = false
+
+# Do not import external agent memories or enable experimental context machinery.
+[features]
+external_agent_memory_import = false
+
+# Example MCP server entry (adapt the command to your own install path):
+# [mcp_servers.example]
+# command = "/usr/local/bin/example-mcp"
+# args = ["mcp"]
