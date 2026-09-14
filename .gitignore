@@ -1,0 +1,53 @@
+# Nothing from a live AI-tool installation belongs in this repository.
+# These patterns are a backstop, not the policy — see docs/security.md.
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+auth.json
+credentials.json
+*token*
+*secret*
+
+# Live/stateful AI-tool data that must never be published
+.ponytail-active
+history.jsonl
+*.jsonl
+projects/
+sessions/
+session-env/
+shell-snapshots/
+paste-cache/
+file-history/
+telemetry/
+backups/
+*.backup-*
+.last-*
+
+# Databases, dumps, logs
+*.sqlite
+*.sqlite-*
+*.db
+*.sql
+*.log
+captures/
+ledger.tsv
+
+# Caches and build output
+__pycache__/
+*.py[cod]
+.cache/
+.ruff_cache/
+.pytest_cache/
+node_modules/
+dist/
+build/
+
+# Local installer scratch
+/tmp/
+/.installer-test/
+
+# macOS
+.DS_Store
