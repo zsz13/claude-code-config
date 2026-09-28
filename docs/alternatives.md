@@ -91,10 +91,61 @@ panel is small and agrees with concrete evidence.
 
 | Alternative | Why not |
 |---|---|
-| **A large style/palette catalog plugin** | Healthy, popular and MIT — and precisely the failure mode this layer exists to prevent: picking an aesthetic from a list of named styles instead of deriving it from the product. Its routing description would also compete with the official design skill, and it cannot be subordinated by configuration. Worth installing *per project* if you want it; not globally. |
+| **UI/UX Pro Max** (a large style/palette catalog plugin) | Healthy, popular and MIT, and re-evaluated on its output rather than on principle. Given three real product descriptions, its design-system generator returned an auction palette over a Playfair Display body for a grocery price tool, and a testimonials carousel in "AI purple + generation pink" for a security console ([reproduction](benchmarks.md#6-uiux-pro-max-design-system-generator)). It matches keywords to curated rows, so a product that shares words with the wrong row inherits that row's whole look. The plugin also installs seven skills, not one: about 2,700 characters of always-on descriptions, one claiming every interface task and another pointing every UI task at shadcn/ui and Tailwind. Claude Code's `skillOverrides` setting can now hide a skill from the model (its documentation does not say how plugin skills are keyed), so routing alone might no longer rule it out. The output does. |
 | **Installing a living external guidelines document** | The install path was an unvetted third-party CLI, and the document changes. Fetching it on demand during a UX audit is always current, costs zero always-on context, and adds no new CLI. |
 | **Reviewing UI from the source diff** | Source is not visual evidence. A screenshot is. The rendered-interface judge is explicitly told it has no finding if it has not looked at a render. |
 | **A global house style** | Nothing global should outrank the product's own design system. |
+| **Design plugins that bundle a routing skill** (21st.dev, Refero, impeccable, Superdesign, taste-skill) | Each ships a skill that claims the whole design task. Refero's calls itself the "Primary/default skill for UI design … even when live Refero MCP tools are not configured"; 21st.dev's triggers on any request for a component, with "a pricing section" and "a testimonials block" as its examples. Installed, each becomes a second design authority beside `frontend-design`. Where one has a capability this layer lacks, take its MCP server alone (below) and leave the skill. |
+| **Component generators** (hosted UI generation, stock-block MCPs) | Generation returns the generator's look, and stock blocks are more template chrome: the failure this layer exists to remove. Discovery that returns source to adapt is a different thing, and is below. |
+| **Motion's AI Kit, installed globally** | It adds a `/motion` skill and MCP servers. The free part is docs search; spring generation, audits and examples need a paid Motion+ sign-in. A global skill would pull every animation task toward a library the policy adds only when the platform cannot do the job. `frontend-quality` reads Motion's current docs on demand instead, in projects that already use it. |
+| **Figma's MCP** | Only useful where Figma files are the source of truth, and a large surface. Per project, if ever. |
+| **Composition and density rules in the build path** (a line in `rules/frontend.md`, or a section in `frontend-quality` or `design-brief`) | Tested before writing, and the failure did not reproduce. Ten fresh-context plans for a price-comparison brief all put real prices in the first viewport, grouped the one store holding most of the cheapest offers, and used desktop width for comparison columns ([benchmarks](benchmarks.md#7-design-layer-micro-tests)). That is weaker than it sounds: the fixture showed the data and its shape outright. The shipped screens that did fail were following a brief that mandated the repetition, and a builder rule cannot outrank the brief. Surfacing a cost the brief imposes is a review job, so the review lens changed instead. The closing check of `design-brief`'s reference step, which names the defaults to go back from, is not such a rule: it is the owner's policy, sits where references are chosen, and is untested ([benchmarks](benchmarks.md#8-claims-made-with-no-measurement-at-all)). |
+| **A motion rule** in `rules/frontend.md` | Five runs on interactions CSS can do all chose CSS (`@starting-style`, `grid-template-rows`), animated nothing on a re-sort, and added no dependency. The platform-first half needs no rule. The other half, when Motion is justified, is one sentence in `frontend-quality` and is untested. |
+
+### Chosen: reference and component MCPs without their skills
+
+Each server adds something the layer lacks; none of their bundled skills is
+installed. `design-brief` (screen references) and `frontend-quality` (components)
+use one only when it is connected, and only for structure, behavior and
+principles, never for the product's look.
+
+The screen-reference servers are at user scope, because the reference step lives
+in the global `design-brief` and has to reach every project, and because the
+accounts belong to a person, not a repository. User scope is as private as local
+scope: it is `~/.claude.json`, never committed. Refero is searched first. Mobbin
+is added only when Refero's coverage of a screen type is weak, when mobile-app
+patterns are central, or when a second set would change the decision; querying
+both by default would double the reference context for no stated gain. MCP tools
+here load through tool search, so what every session pays for a user-scope server
+is its tool names and any instructions it sends; check `/context` after signing
+in.
+
+shadcn's, Motion's and 21st.dev's servers are per project: each helps only where
+the project uses its stack. 21st.dev needs a key, so it goes in the default local
+scope, which is private. Every 21st.dev tool that generates, publishes or writes
+to the account is denied in user `settings.json`
+([template](../config/settings.example.json)), so the guard holds in any project
+that connects it. The rules match a server named `21st`: connect it with the
+command below rather than the vendor's CLI, whose server name was not checked, or
+rename the rules.
+
+| Tool | Where it applies | Setup |
+|---|---|---|
+| Refero MCP | Primary screen and flow references. Needs a paid plan (Pro, Team or Lifetime). Queries leave the machine | `claude mcp add --scope user --transport http refero https://api.refero.design/mcp`, the MCP only, not the plugin. Sign in with `/mcp`; with an API token instead, add `--header "Authorization: Bearer YOUR_TOKEN"` |
+| Mobbin MCP | Second reference set, strongest on mobile apps. Pro, Team or Enterprise plan, not Free. Queries leave the machine | `claude mcp add --scope user --transport http mobbin https://api.mobbin.com/mcp`. Sign in with `/mcp` |
+| 21st.dev MCP | React and Tailwind projects that need a component's behavior or composition as a reference. API key; search and component reads are free, generation spends credits | In the project: `claude mcp add --transport http 21st https://21st.dev/api/mcp --header "x-api-key: YOUR_API_KEY"`, the MCP only, not the plugin |
+| shadcn MCP (official) | Projects that already use shadcn/ui; it reads registries from `components.json` and returns source | `npx shadcn@latest mcp init --client claude` (writes the project's `.mcp.json`) |
+| Motion docs MCP | Projects that depend on Motion and want docs search in the session; otherwise `frontend-quality` points at motion.dev/docs. Free, no account | `claude mcp add --scope project --transport http motion https://mcp.motion.dev` |
+
+Mobbin's command is its own documentation's, and Refero's is its documented
+MCP-only form with the token header left off for OAuth (both as of 2026-09-28).
+Both were run, and both servers answered with a sign-in challenge. 21st.dev
+documents a CLI that writes a project `.mcp.json`; the command above pairs its
+documented endpoint and header with Claude Code's `claude mcp add` syntax, and has
+not been run. The denied tool names come from 21st.dev's MCP documentation. A deny
+rule for a renamed tool silently stops matching, so compare them with the tools
+`/mcp` lists once the server is connected. The shadcn command is shadcn's own;
+Motion's transport is inferred from its HTTPS endpoint.
 
 ---
 

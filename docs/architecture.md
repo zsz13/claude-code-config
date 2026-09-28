@@ -8,7 +8,7 @@ How the pieces fit together, what loads when, and what talks to what.
 ┌──────────────────────────────────────────────────────────────────────┐
 │ ALWAYS LOADED (paid for in every single session)                     │
 │   ~/.claude/CLAUDE.md            universal engineering policy        │
-│   ~/.claude/settings.json        model, hooks, plugins               │
+│   ~/.claude/settings.json        model, hooks, plugins, deny rules   │
 │   <dir>/CLAUDE.md                directory-scoped policy             │
 │   plugin + MCP routing descriptions                                  │
 ├──────────────────────────────────────────────────────────────────────┤
@@ -188,10 +188,10 @@ and `/context` measure whether any of it worked.
 
 | Scope | What lives there |
 |---|---|
-| **Global** (`~/.claude/`) | `CLAUDE.md`, `settings.json`, all seven rules, all ten skills, all seven agents, all hooks, `bin/run-captured` |
+| **Global** (`~/.claude/`) | `CLAUDE.md`, `settings.json`, all seven rules, all ten skills, all seven agents, all hooks, `bin/run-captured`; at user scope in `~/.claude.json`, the screen-reference MCPs (Refero, Mobbin), without their bundled skills |
 | **Directory** (`<code-dir>/CLAUDE.md`) | Ponytail and dead-code trigger rules, priority ladder, reporting requirement, Ponytail state hygiene |
 | **Project** (`<repo>/CLAUDE.md`, `<repo>/.claude/`) | Architecture, commands, conventions, project-specific plugins |
-| **Deliberately not global** | Infrastructure agent packs, design-system/style catalogs, any second security reviewer, any version pin |
+| **Deliberately not global** | Infrastructure agent packs, design-system/style catalogs, shadcn's, Motion's and 21st.dev's MCPs (per project, where the project uses that stack), any MCP's bundled design skill, any second security reviewer, any version pin |
 
 Precedence runs the other way: a repository's own `CLAUDE.md` wins over the
 directory file, which wins over the global one.

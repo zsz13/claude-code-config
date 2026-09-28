@@ -109,6 +109,23 @@
       }
     ]
   },
+  "permissions": {
+    "deny": [
+      "mcp__21st__generate",
+      "mcp__21st__iterate_generation",
+      "mcp__21st__edit_component",
+      "mcp__21st__delete_component",
+      "mcp__21st__edit_theme",
+      "mcp__21st__delete_theme",
+      "mcp__21st__edit_template",
+      "mcp__21st__delete_template",
+      "mcp__21st__edit_profile",
+      "mcp__21st__upload_profile_media",
+      "mcp__21st__bookmark",
+      "mcp__21st__create_bookmark_list",
+      "mcp__21st__add_to_list"
+    ]
+  },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,

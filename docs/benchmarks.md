@@ -228,7 +228,150 @@ verified to do what they claim; there is no test proving no fourth path exists.
 
 ---
 
-## 6. Claims made with no measurement at all
+## 6. UI/UX Pro Max design-system generator
+
+**Class: Measured** (direct reproduction) for what the tool returns. That the
+output is off-target is a judgement, but the evidence for it is quoted below, so
+you can check it yourself.
+
+Run on 2026-09-27 against `nextlevelbuilder/ui-ux-pro-max-skill` at `09170ee`, the
+head of the default branch, which is what a plugin install fetches. Its manifests
+still say 2.13.0, and the newest tag, `v2.15.0`, points at an earlier commit
+(`a38d04c`; check with `git ls-remote --tags`). The search script is
+standard-library Python over bundled CSV files. It makes no network calls, so the
+output is deterministic:
+
+```bash
+git clone https://github.com/nextlevelbuilder/ui-ux-pro-max-skill && cd ui-ux-pro-max-skill
+git checkout 09170ee
+S=.claude/skills/ui-ux-pro-max/scripts/search.py
+python3 "$S" "grocery price comparison unit price nearby stores" --design-system --density 8 -f markdown
+python3 "$S" "AI agent wallet security firewall onchain policy audit console" --design-system --density 7 -f markdown
+python3 "$S" "used car marketplace inspection reports trust" --design-system -f markdown
+python3 "$S" "price comparison search results list" --domain product -n 3
+```
+
+| Product described | What came back |
+|---|---|
+| Consumer grocery price comparison | Pattern "Real-Time / Operations Landing" with a "Start trial / Contact" CTA; style "Dark Mode (OLED)" with light mode marked not recommended; Inter headings over a Playfair Display body; palette note "Dark luxury + bid green + outbid red + urgency"; anti-pattern "No bid state". This is an auction profile. |
+| Security console for AI-agent wallets | Pattern "Hero + Testimonials + CTA" with a testimonials carousel; style "AI-Native UI" with typing indicators; palette note "AI purple + generation pink" (`#7C3AED`, `#EC4899`). |
+| Used-car marketplace with inspection reports | "Hero + Testimonials + CTA" again; Inter over Playfair Display again; palette note "Trust purple + transaction green". |
+| `--domain product` lookup, price-comparison results list | Patient Portal / Health Records; Patent / IP Database; Gift & Wishlist. |
+
+Installing it as a plugin adds seven skills, because its manifest points at the
+whole `.claude/skills/` directory: `ui-ux-pro-max`, `design`, `design-system`,
+`brand`, `ui-styling`, `banner-design`, and `slides`. Together their descriptions
+are 2,663 characters. The two design skills here have 385.
+
+**What this establishes:** what the generator returns for these descriptions at
+this commit, and that two of the three results are templates this layer is built
+to avoid.
+
+**What it does not establish:** that the tool never helps. That would take more
+products and more queries. Its UX-guideline rows are generic checklists rather
+than wrong ones.
+
+---
+
+## 7. Design-layer micro-tests
+
+**Class: Observed**, placed one step down on purpose. The runs were more
+rigorous than the class needs: five fresh-context runs per arm, with inputs
+identical except for the text under test. But as with §3, a reader cannot rerun
+them from this repository. The fixtures and transcripts are not published, the
+review arm's inputs are a private project's, and every report was scored by hand
+by a single scorer who also made the change.
+
+Run on 2026-09-27 with the `opus` alias the judge definitions use. Each control
+arm ran before the text under test changed.
+
+**Build path: the failure did not reproduce, so nothing was added.** The task was
+a brief for a fictional grocery price-comparison app. Context was the current
+rule plus `frontend-quality` and `frontend-design`. Each run was asked for layout
+wireframes of the home and results screens at 375 and 1280px. For five runs the
+product's data was stated in the brief. For the other five it appeared only in
+API types and a test-fixture summary.
+
+| Scored | Data in brief | Data only in codebase |
+|---|---|---|
+| First viewport shows real product data | 5/5 | 5/5 |
+| The store holding 7 of the 10 cheapest offers is stated once | 5/5 | 5/5 |
+| Desktop adds information (matrix, columns, side panel) | 5/5 | 5/5 |
+
+This is weaker than it looks. Both fixtures stated the data's shape outright
+("7 of the 10 cheapest" are at one branch), which invites grouping. The shipped
+screens in the review arm did fail, but they were following a brief that mandates
+the repeated strip, on an API whose only price query is a per-staple search. So
+the runs show that the defaults compose from the data when the data and its shape
+are in view. They do not show that the build path cannot fail. No builder run used
+that real brief. A builder that follows it would reproduce the strip by design,
+and a builder rule cannot outrank the brief.
+
+Motion used the same method: five runs, on three interactions CSS can do (an
+expand/collapse, a dialog, and a re-sort in a React 19.3 app with no animation
+library). All five chose CSS (`@starting-style`, `transition-behavior:
+allow-discrete`, `grid-template-rows`) and added no dependency. All five also
+left the re-sort unanimated, but the fixture brief limited motion to open, expand
+and confirm, so that part followed the brief. The other half of the policy was
+not tested: reaching for Motion when the platform cannot do the job.
+
+**Review: a failure found, fixed, and checked against a negative control.**
+`visual-design-judge` reviewed two real 1280px renders of a price-comparison app
+against that product's brief. One was a home screen with an instruction above
+half a screen of empty space. The other was a results list in which four of five
+cards carry an identical store strip and a wide empty gap, which the judges put
+at 650 to 800px.
+
+| Raised as a finding | Before | Three questions + fix recipe | + owner-cost sentence | Final wording |
+|---|---|---|---|---|
+| First viewport lacks data the product already has | 0/5 | 5/5 | 5/5 | 5/5 |
+| Identical content repeated across sibling cards | 0/5 | 2/5 | 5/5 | 5/5 |
+| Desktop width answered with information, not by narrowing | 0/5 | 5/5 | 5/5 | 5/5 |
+
+Before the change, no run raised the empty home screen as a finding, and two
+explicitly accepted it ("fine for an empty state", "which the brief's restraint
+allows"). Four of five proposed capping or narrowing the width, and the fifth
+left the gap to the brief's owner with no direction. With the three questions
+alone, two of five raised the repeated strip. One run that missed it explained
+why: "the brief requires a strip on every card, so I note this but don't score
+it." With the owner-cost sentence, all five raised it, as a question for the
+brief's owner. The final wording swaps an example that named the fixture ("the
+same store") for a neutral one, and adds the packet's data line. All 20 review
+runs, in every arm, also reported the findings the judge already made: accent
+overuse and the missing price-history action.
+
+The negative control used the final wording and the fictional brief on three
+deliberately good renders:
+- a home screen full of data;
+- results grouped by store, with columns at desktop;
+- a first-visit ZIP screen, where showing no data is correct.
+
+The criteria were fixed before the runs. By those criteria, no run raised any of
+the three checks falsely. Some said so explicitly: "the main question is answered
+with data, not a prompt"; "asking for a ZIP first is justified, since none is
+stored". The repetition that runs did raise was content that really was
+identical, such as "sold by weight" in every banana cell. The first-viewport
+question still leans one way. Four of five runs suggested, at low severity, that
+the first-visit screen name what gets compared, and two noted its empty space.
+That is reasonable copy advice, but it shows the lens tilts toward adding content
+even where no data is owed. All five also found two flaws built into the renders
+by accident: columns that don't line up across store groups, and counts that
+don't match the rows. Four of five caught that the two screens disagree on the
+cheapest eggs.
+
+**What this establishes:** on these fixtures, the review lens now raises what it
+used to miss, and it does not raise the three defects against screens that lack
+them. It does lean toward suggesting more content.
+
+**What it does not establish:** that the result generalizes beyond one product
+domain. It also does not establish that a fixed review leads to a better shipped
+page, since the loop was not run end to end, or anything about models other than
+the one tested. Every run shared the same ambient context the harness loads
+automatically, identical across arms.
+
+---
+
+## 8. Claims made with no measurement at all
 
 Stated plainly so they are not mistaken for results:
 
@@ -241,6 +384,12 @@ Stated plainly so they are not mistaken for results:
 | The read-budget advisor changes read behavior | **Hypothesis** — the hook fires; nobody measured whether the model then reads narrower. |
 | The large-output advisor changes command choice | **Hypothesis** — same. |
 | One-hint-per-session-per-class is the right frequency | **Rationale** — chosen to avoid nagging, never tuned. |
+| Telling `visual-design-judge` what data the product already holds makes its first-viewport check fire when no other render shows that data | **Hypothesis**. In testing, the data was visible in a second render; the packet line itself was not tested. |
+| The component-search and screen-reference hooks, used only when such an MCP is connected, lead to adapted components and principle-level references rather than pasted ones | **Rationale**. No such server was connected in testing. |
+| Researching two or three shipped products that solved the same problem (Refero first, Mobbin only when useful, never averaged) gives a screen more product-specific structure than designing without them | **Rationale**. It is the owner's stated policy. No reference server was authenticated or measured. |
+| Naming the defaults a direction can fall back to (a default card grid, empty hero, decorative metrics, gradient or glass, AI purple) as a check at the end of the reference step catches that fallback before building | **Hypothesis**. Untested. |
+| Pointing at Motion's current docs prevents stale-API code in projects that use it | **Hypothesis**. Not tested. |
+| Naming when Motion is justified (layout and shared-element transitions, exit choreography, gestures, interruptible springs) gets it used there and nowhere else | **Rationale**. It is the owner's stated policy. Only the platform-first half was tested (§7). |
 | The whole setup improves engineering outcomes | **Untested.** There is no end-to-end measurement of output quality, and building an honest one is hard. |
 
 ---

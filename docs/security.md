@@ -20,7 +20,7 @@ every item. It is **not** a copy of `~/.claude`.
 | `~/.claude/sessions/`, `session-env/`, `shell-snapshots/`, `paste-cache/`, `file-history/` | Live session state, pasted content, file snapshots. |
 | `~/.claude/telemetry/`, `cache/`, `downloads/` | Generated, machine-local. |
 | `~/.claude/backups/`, `*.backup-*`, `.last-*` | Point-in-time copies of the above. |
-| `~/.claude.json` | Per-project harness state, including project paths. |
+| `~/.claude.json` | Per-project harness state, including project paths, and user- and local-scope MCP servers, with any API key in their headers. |
 | `~/.claude/.ponytail-active` | Live mode flag. Publishing it would ship a mode. |
 | `~/.claude/plugins/` (caches, `installed_plugins.json`, `known_marketplaces.json`) | Third-party plugin code plus absolute install paths and commit SHAs. Plugins are *named* in `config/settings.example.json` and installed by their own marketplace. |
 | `~/.codex/auth.json` | **Credentials.** Never read, never copied. |
@@ -70,8 +70,10 @@ They use `~`-relative paths throughout and contain none of those.
 
 ### The two deny-hooks
 
-`block-destructive-iac.sh` and `block-git-no-verify.sh`/`.py` are the only
-components that block anything. Both are narrow by design:
+`block-destructive-iac.sh` and `block-git-no-verify.sh`/`.py` are the only hooks
+that block anything. (The one other block is `permissions.deny` in
+`settings.json`, covered under trust boundaries below.) Both hooks are narrow by
+design:
 
 - **IaC guard** denies `terraform`/`tofu` `apply`, `destroy`, `import`, `taint`,
   `untaint`, `force-unlock`, and `state mv|rm|push|replace-provider` — including
@@ -159,6 +161,13 @@ audit was designed with no state at all.
 - **Plugins and marketplaces are third-party code** that loads into every
   session. `config/settings.example.json` names six plugins from three
   marketplaces. Evaluate them yourself; being listed here is not an audit.
+- **Remote MCP servers receive your queries.** The screen-reference servers
+  (Refero, Mobbin) are at user scope, and 21st.dev's is connected per project.
+  Every query leaves the machine, and a keyed server's key sits in plain text in
+  `~/.claude.json`. `permissions.deny` in `settings.json` blocks 21st.dev's
+  generation, publishing and account-write tools. It matches by server and tool
+  name, so a server connected under another name, or a renamed tool, is not
+  blocked.
 - **Skills and agents are instructions, not code.** They cannot execute anything
   on their own, but they do shape what the model does with tools it already has.
 - **The installer writes only under `$HOME/.claude` (or `$CLAUDE_CONFIG_DIR`)**

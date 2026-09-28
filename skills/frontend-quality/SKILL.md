@@ -36,13 +36,17 @@ affected viewport. **Do not redesign.** Do not run the review stages.
 
 **New screen or major redesign**
 → `design-brief` if no system exists or the direction is genuinely open
+→ if the screen's structure is open, invoke `design-brief` for its reference
+  research (step 3), even in an established system
 → `frontend-design` for the aesthetic work
 → compact visual plan → implement → render
 → screenshots at ~375px and ~1280px → `visual-design-judge`
 → UX and accessibility pass → fix what matters → **render again**.
 
 **New product or landing page**
-→ `design-brief` → establish real content first → product-specific direction
+→ `design-brief`, with its reference research unless references were given
+→ establish real content first
+→ product-specific direction
 → define tokens → `frontend-design` → build → browser iteration
 → `visual-design-judge` → UX and accessibility pass → final responsive check.
 
@@ -60,8 +64,12 @@ Use the Playwright MCP browser (`mcp__plugin_playwright_playwright__*`).
 4. `browser_resize` + `browser_take_screenshot` per viewport.
 5. Look at the screenshots. Critique. Fix. Render again.
 
-Write screenshots to a temp/output location, never into product source folders —
-unless the repository intentionally keeps visual snapshots under version control.
+Screenshots land in the MCP's output directory, `.playwright-mcp/` under the
+workspace root by default. Current versions refuse paths outside the workspace,
+so do not pass a temp path. That directory is not product source: keep it out of
+commits (`.git/info/exclude` if the project does not already ignore it), and
+never write screenshots into product source folders unless the repository
+intentionally keeps visual snapshots under version control.
 
 ## Viewports
 
@@ -121,6 +129,13 @@ Avoid every-element fade-up, animation on every card, parallax for its own sake,
 springs with no reason, and animation that exists because a library is installed.
 Prefer transform and opacity. Honor `prefers-reduced-motion`.
 
+Reach for Motion (`motion/react`) only for what the platform does not do
+cleanly: layout and shared-element transitions across re-renders, exit
+choreography, drag and gesture physics, interruptible springs. Adding it is a
+project decision, not a side effect of one component. Where it is already a
+dependency, check its current API at motion.dev/docs; it changes between majors,
+and memory lags.
+
 ## Component libraries
 
 Respect the existing stack. Do not mandate shadcn/ui, MUI, Chakra, Tailwind, or
@@ -130,6 +145,17 @@ If the project uses shadcn/ui, its components are **implementation
 infrastructure, not art direction** — use them for behavior and accessibility,
 then customize tokens and composition so the product does not look like every
 other shadcn app. Preserve the accessibility behavior you inherit.
+
+The same holds for any component source: a registry, a component-search MCP
+(shadcn's in a shadcn project, 21st.dev's in a React and Tailwind one), or a
+community snippet. Look there when a specific element is the hard part: its
+behavior (a command palette, a data table, a dialog) or its composition (a
+pricing section, a hero, a card). Use search and source tools, never a hosted
+generator, and add a component to the project only when this work needs it.
+Keep the behavior and accessibility, and restyle it to the project's tokens,
+type roles, spacing, radius, density, and interaction model. A demo's palette,
+radius, or type never becomes the product's; its composition is a reference to
+adapt, not a layout to paste.
 
 ## Performance
 
@@ -143,8 +169,9 @@ capability when it achieves the design cleanly.
 Frontend review is split on purpose:
 
 - **`visual-design-judge`** — rendered visual quality. Give it the product
-  context, the brief or the established design system, the routes, and the
-  screenshots. Withhold your reasoning and your confidence, as with any judge.
+  context, the brief or the established design system, what data the product
+  already holds for these screens, the routes, and the screenshots. Withhold
+  your reasoning and your confidence, as with any judge.
 - **Engineering judges** (`adversarial-jury`) — correctness, tests, types,
   runtime behavior. Add `security-judge` or `architecture-judge` only if the
   change actually touches those.

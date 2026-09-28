@@ -28,10 +28,12 @@ what it already decided:
 - motion patterns;
 - copy voice.
 
-Then stop. Match it. Consistency beats novelty in an established product, and
-"improving" a product into a different design language is a defect unless it was
-explicitly requested. A partial or inconsistent system means extract what is
-real, and note only the specific gaps you must fill.
+Then stop. Match it. (A new screen whose structure is still open also gets the
+reference research in step 3, for structure only.) Consistency beats novelty in
+an established product, and "improving" a product into a different design
+language is a defect unless it was explicitly requested. A partial or
+inconsistent system means extract what is real, and note only the specific gaps
+you must fill.
 
 ## 2. For greenfield or redesign, establish the direction
 
@@ -60,12 +62,33 @@ day-traders should not converge.
 ## 3. Handling references
 
 When given screenshots, Figma files, URLs, or named references, extract
-**principles**, not pixels: hierarchy, density, grid, spacing rhythm, type roles,
-palette relationships, radius philosophy, border/shadow treatment, motion,
-content structure, image treatment.
+**principles**, not pixels: information hierarchy, composition, content density,
+what sits above the fold, navigation model, grid and spacing rhythm, type roles,
+interaction patterns, empty/loading/error handling, responsive behavior, palette
+relationships, radius philosophy, border/shadow treatment, motion, image
+treatment.
 
 Use them as calibration. Never clone a third party's site pixel-for-pixel unless
 the user owns that design and explicitly asks for reproduction.
+
+**Researching references.** For a substantial new screen, flow, or redesign
+whose structure is still open, and no references were given, study how shipped
+products solved the same problem before choosing a direction:
+
+- Search Refero first. Add Mobbin only when Refero's coverage of that screen
+  type is weak, when mobile-app patterns are central, or when a second set
+  would change the decision. With neither connected, skip this step; do not
+  work from memory of famous products.
+- Pick two or three references because they solved a similar problem (the
+  same user job, a similar data shape, similar constraints), never because
+  the company is famous.
+- Extract the principles above, each with the reason it fits this product.
+  Never average several unrelated products into a composite. In an
+  established design system, references inform structure only, never style.
+
+If the direction that comes out is a default card grid, a large empty hero,
+decorative metrics, gradient or glass surfaces, or AI purple, it came from
+defaults, not from the product or its references. Go back to the product.
 
 ## 4. Write it down — only when it will be reused
 

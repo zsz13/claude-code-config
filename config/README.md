@@ -8,7 +8,8 @@ file.
 
 ## `settings.example.json` → `~/.claude/settings.json`
 
-The Claude Code user settings: model, hook registrations, enabled plugins.
+The Claude Code user settings: model, hook registrations, enabled plugins, and
+a deny list for one MCP server's write tools.
 
 ### What you must change
 
@@ -28,6 +29,12 @@ Ponytail ruleset reaching any subagent, regardless of the plugin's flag state.
 replacement must be a valid regex that matches nothing. Only relevant if you use
 the ponytail plugin; harmless otherwise. Background:
 [docs/security.md](../docs/security.md#the-ponytail-flag-leak).
+
+`permissions.deny` — blocks 21st.dev's generation, publishing and account-write
+tools, so its MCP stays a component reference. The rules match a server named
+`21st`. Connect it under that name, or rename the rules, or they block nothing.
+Harmless if you never connect it. Background:
+[docs/alternatives.md](../docs/alternatives.md#chosen-reference-and-component-mcps-without-their-skills).
 
 ### Hooks you may not want
 
