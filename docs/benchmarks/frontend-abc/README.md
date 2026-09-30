@@ -58,16 +58,22 @@ The small round "N" is the Next.js dev indicator.
 | [21st-call-log.md](21st-call-log.md) | The 21st build's log of all 40 calls |
 | [composition-protocol.md](composition-protocol.md) | The composition plan test's protocol, fixed before the runs, and its scored result |
 | [composition-plans.md](composition-plans.md) | The ten plans in full, each with the skills it invoked and its 21st calls |
-| [prompts/](prompts/) | The three build prompts and the composition-plan prompt |
+| [followup-protocol.md](followup-protocol.md) | The follow-up probes (planning, trivial work, established systems, no research tool): both rounds' protocols, the amendment, and both results |
+| [followup-probes.json](followup-probes.json) | Per-run counts for both follow-up rounds; round 2 ran the final skill text |
+| [followup-fallback-plans.md](followup-fallback-plans.md) | The six round-2 replies from runs with no research tool, which the fallback scoring rests on |
+| [prompts/](prompts/) | The three build prompts and the composition-plan prompt; `followup/` holds the follow-up probe prompts |
 | [CREDITS.md](CREDITS.md) | Photo authors and licences |
 
-The build transcripts (stream-json, 27 to 41 MB each) and full-resolution
-screenshots are not published. The probe transcripts were kept in a session
-scratch directory that has since been cleared, so for the probes
-`tool-counts.json` holds the counts recorded when each probe was counted. The two
-installed substantial probes were stopped after their 21st calls, so that the
-composition test could run with no other headless session; their totals are
-therefore partial.
+Three things are not published:
+- the build transcripts (stream-json, 27 to 41 MB each);
+- the follow-up probe transcripts, which the owner keeps;
+- the full-resolution screenshots.
+
+The original tool-selection probes' transcripts (before the follow-up) were
+kept in a session scratch directory that has since been cleared. For those
+probes, `tool-counts.json` holds the counts recorded when each probe was counted.
+The two installed substantial probes among them were stopped after their 21st calls, so that the composition test
+could run with no other headless session; their totals are therefore partial.
 
 ## Reproduce
 

@@ -1,0 +1,1 @@
+We're building a web app for a small veterinary clinic: a front-desk dashboard, appointments, patient records and billing. Before any code, plan the main screens: for each one, its job and a one-line layout description. Stop there and don't create any files yet.

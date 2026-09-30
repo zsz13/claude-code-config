@@ -8,6 +8,11 @@ three builds used the same 20 photos.
 build's hero they are also colour-tinted. The boards are screenshots of the
 builds, reduced and placed side by side.
 
+**No single licence covers a board.** Each photo inside a board stays under its
+own licence in the table below, with its author and source; reuse a photo from a
+board on those terms. The CC BY-SA and CC BY licences require that credit, a
+link to the licence, and a note of the changes above.
+
 | Photo | Author | Licence | Source |
 |---|---|---|---|
 | `alfa-giulia-qv-1.jpg` | TTTNIS | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | [2026 Alfa Romeo Giulia Quadrifoglio.jpg](https://commons.wikimedia.org/wiki/File:2026_Alfa_Romeo_Giulia_Quadrifoglio.jpg) |

@@ -13,8 +13,9 @@ paths:
   visual evidence; a screenshot is.
 - Preserve an existing design system. Match its tokens, primitives, spacing, and
   interaction patterns; consistency outranks novelty in an established product.
-- Greenfield or redesign work establishes a product-specific direction first via
-  the `design-brief` skill, then `frontend-design`. There is no global house style.
+- Substantial frontend work, as `frontend-quality` defines it, gets a
+  product-specific direction first through that skill's route (research,
+  `design-brief`, then `frontend-design`). There is no global house style.
 - Accessibility is part of done: semantic elements, labelled controls, keyboard
   operation, visible focus, contrast, and no status conveyed by color alone.
   Keep `eslint-plugin-jsx-a11y` (or the framework equivalent) enabled in

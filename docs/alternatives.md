@@ -107,7 +107,8 @@ panel is small and agrees with concrete evidence.
 Each server adds something the layer lacks; none of their bundled skills is
 installed. `design-brief` (screen references) and `frontend-quality` (components)
 use one only when it is connected, and only for structure, behavior and
-principles, never for the product's look.
+principles. They inform the product's look only when its visual direction is
+itself the open question.
 
 The screen-reference servers are at user scope, because the reference step lives
 in the global `design-brief` and has to reach every project, and because the
@@ -135,16 +136,15 @@ names, since MCP tools load through tool search: the server sends no
 instructions. Every session does connect to it with the key, though. When the
 tools are called is decided by the route in `frontend-quality`: substantial
 work researches, a small fix never does. With neither 21st.dev nor a reference
-server connected, substantial work gets no outside research at all; nothing
-replaces it ([benchmarks](benchmarks.md#8-frontend-research-trigger-and-three-way-build)).
+server connected, `design-brief` writes an internal art direction instead of
+skipping the step ([benchmarks](benchmarks.md#8-frontend-research-trigger-and-three-way-build)).
 
-Every 21st.dev tool that generates, publishes, or writes to the account's
-profile, bookmarks or catalog entries is denied in user `settings.json`
-([template](../config/settings.example.json)). One tool that sends data is left
-allowed: `record_inspiration_feedback` records an accept or reject on an
-inspiration result under the key, and feeds 21st.dev's ranking. The rules
-match a server named `21st`: connect it with the command below rather than the
-vendor's CLI, whose server name was not checked, or rename the rules.
+Every 21st.dev tool that generates, publishes, or writes under the account is
+denied in user `settings.json` ([template](../config/settings.example.json)).
+That includes `record_inspiration_feedback`, which would record an accept or
+reject on an inspiration result under the key and feed 21st.dev's ranking. The
+rules match a server named `21st`: connect it with the command below rather than
+the vendor's CLI, whose server name was not checked, or rename the rules.
 
 | Tool | Where it applies | Setup |
 |---|---|---|
@@ -166,9 +166,10 @@ the 11 denied tools the server offered were removed; `generate` and
 `iterate_generation` were absent because the account had no AI entitlement, and
 four catalog-review tools (`submit_component`, `withdraw_component`,
 `resubmit_component`, `remove_component_from_catalog`) had appeared since the
-deny list was written from the documentation. They are denied now. A deny rule
-for a renamed tool silently stops matching, so compare the list with the tools
-`/mcp` shows. The shadcn command is shadcn's own; Motion's transport is inferred
+deny list was written from the documentation. Those four are denied now, and
+so is `record_inspiration_feedback`. With those five added to the original
+denials, a session sees 18 of the server's tools (checked 2026-09-30). A deny rule for a renamed tool silently stops matching, so compare
+the list with the tools `/mcp` shows. The shadcn command is shadcn's own; Motion's transport is inferred
 from its HTTPS endpoint.
 
 ---

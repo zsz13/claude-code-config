@@ -31,12 +31,12 @@ the ponytail plugin; harmless otherwise. Background:
 [docs/security.md](../docs/security.md#the-ponytail-flag-leak).
 
 `permissions.deny` — blocks 21st.dev's generation, publishing and account-write
-tools, so its MCP stays a component reference. `record_inspiration_feedback`,
-which sends accept and reject signals on inspiration results, is not denied. The
-rules match a server named `21st`. Connect it under that name, or rename the
-rules, or they block nothing. The server adds tools over time (four
-catalog-review tools appeared after the first list was written), so compare the
-list with what `/mcp` shows. Harmless if you never connect it. Background:
+tools, including `record_inspiration_feedback` (feedback signals sent under your
+key), so its MCP stays a component reference. The rules match a server named
+`21st`. Connect it under that name, or rename the rules, or they block nothing.
+The server adds tools over time (four catalog-review tools appeared after the
+first list was written), so compare the list with what `/mcp` shows. Harmless
+if you never connect it. Background:
 [docs/alternatives.md](../docs/alternatives.md#chosen-reference-and-component-mcps-without-their-skills).
 
 ### Hooks you may not want

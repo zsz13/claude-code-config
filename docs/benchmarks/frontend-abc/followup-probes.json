@@ -1,0 +1,777 @@
+{
+  "note": "Follow-up probes of 2026-09-30, counted from stream-json transcripts (subagents included) by summarize.py. Every run disallowed get_component and had record_inspiration_feedback denied. Round 2 ran the final shipped skill text and is the result that counts; round 1 ran an intermediate text and is kept as history. B runs stop at the 25-turn cap by design. writes counts Write/Edit only: r2-G1 changed its files through Bash. Round 1 E1 and E2 are confounded (fixture notes said no 21st; 21st also still pending at init).",
+  "round2": {
+    "arms": {
+      "A substantial planning": [
+        "r2-A1",
+        "r2-A2",
+        "r2-A3",
+        "r2-A4",
+        "r2-A5"
+      ],
+      "H substantial plan asked as a question": [
+        "r2-H1",
+        "r2-H2"
+      ],
+      "B substantial build": [
+        "r2-B1",
+        "r2-B2"
+      ],
+      "C trivial fix": [
+        "r2-C1",
+        "r2-C2"
+      ],
+      "D trivial question": [
+        "r2-D1",
+        "r2-D2"
+      ],
+      "G small new component; plan for a small fix": [
+        "r2-G1",
+        "r2-G2"
+      ],
+      "E3 established system, saved-cars page (fail)": [
+        "r2-E3a",
+        "r2-E3b"
+      ],
+      "E4 established system, comparison view": [
+        "r2-E4a",
+        "r2-E4b"
+      ],
+      "F no research tool, greenfield": [
+        "r2-F1",
+        "r2-F2",
+        "r2-F3",
+        "r2-F4"
+      ],
+      "EF no research tool, established system": [
+        "r2-EF1",
+        "r2-EF2"
+      ]
+    },
+    "runs": [
+      {
+        "run": "r2-A1",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "turns": 11,
+        "cost_usd": 0.46
+      },
+      {
+        "run": "r2-A2",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "turns": 11,
+        "cost_usd": 0.51
+      },
+      {
+        "run": "r2-A3",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "turns": 11,
+        "cost_usd": 0.48
+      },
+      {
+        "run": "r2-A4",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "turns": 11,
+        "cost_usd": 0.49
+      },
+      {
+        "run": "r2-A5",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "turns": 11,
+        "cost_usd": 0.51
+      },
+      {
+        "run": "r2-B1",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 2
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 2,
+        "research_before_write": true,
+        "total_tool_calls": 36,
+        "result": "error_max_turns",
+        "turns": 26,
+        "cost_usd": 2.96
+      },
+      {
+        "run": "r2-B2",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief",
+          "frontend-design:frontend-design"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 2
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 14,
+        "research_before_write": true,
+        "total_tool_calls": 37,
+        "result": "error_max_turns",
+        "turns": 26,
+        "cost_usd": 2.65
+      },
+      {
+        "run": "r2-C1",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 1,
+        "research_before_write": false,
+        "total_tool_calls": 8,
+        "result": "success",
+        "turns": 9,
+        "cost_usd": 0.36
+      },
+      {
+        "run": "r2-C2",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 1,
+        "research_before_write": false,
+        "total_tool_calls": 7,
+        "result": "success",
+        "turns": 8,
+        "cost_usd": 0.28
+      },
+      {
+        "run": "r2-D1",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 3,
+        "result": "success",
+        "turns": 4,
+        "cost_usd": 0.26
+      },
+      {
+        "run": "r2-D2",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 2,
+        "result": "success",
+        "turns": 3,
+        "cost_usd": 0.21
+      },
+      {
+        "run": "r2-E3a",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {
+          "search": 2
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 18,
+        "result": "success",
+        "turns": 20,
+        "cost_usd": 0.78
+      },
+      {
+        "run": "r2-E3b",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 1
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 11,
+        "result": "success",
+        "turns": 13,
+        "cost_usd": 0.79
+      },
+      {
+        "run": "r2-E4a",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief",
+          "frontend-design:frontend-design"
+        ],
+        "21st": {
+          "search": 2
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 19,
+        "result": "success",
+        "turns": 23,
+        "cost_usd": 1.13
+      },
+      {
+        "run": "r2-E4b",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {
+          "search": 2
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 11,
+        "result": "success",
+        "turns": 13,
+        "cost_usd": 1.02
+      },
+      {
+        "run": "r2-EF1",
+        "21st_server": "absent",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 10,
+        "result": "success",
+        "turns": 13,
+        "cost_usd": 1.05
+      },
+      {
+        "run": "r2-EF2",
+        "21st_server": "absent",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 9,
+        "result": "success",
+        "turns": 12,
+        "cost_usd": 1.01
+      },
+      {
+        "run": "r2-F1",
+        "21st_server": "absent",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 4,
+        "result": "success",
+        "turns": 7,
+        "cost_usd": 0.41
+      },
+      {
+        "run": "r2-F2",
+        "21st_server": "absent",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 3,
+        "result": "success",
+        "turns": 6,
+        "cost_usd": 0.4
+      },
+      {
+        "run": "r2-F3",
+        "21st_server": "absent",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 3,
+        "result": "success",
+        "turns": 6,
+        "cost_usd": 0.38
+      },
+      {
+        "run": "r2-F4",
+        "21st_server": "absent",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 3,
+        "result": "success",
+        "turns": 6,
+        "cost_usd": 0.35
+      },
+      {
+        "run": "r2-G1",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 16,
+        "result": "success",
+        "turns": 17,
+        "cost_usd": 0.76
+      },
+      {
+        "run": "r2-G2",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 2,
+        "result": "success",
+        "turns": 3,
+        "cost_usd": 0.25
+      },
+      {
+        "run": "r2-H1",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "turns": 11,
+        "cost_usd": 0.56
+      },
+      {
+        "run": "r2-H2",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "refero": 0,
+        "mobbin": 0,
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "turns": 11,
+        "cost_usd": 0.65
+      }
+    ]
+  },
+  "round1_intermediate_text": {
+    "runs": [
+      {
+        "run": "A1",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 2
+        },
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 7,
+        "result": "success",
+        "cost_usd": 0.44
+      },
+      {
+        "run": "A2",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "cost_usd": 0.51
+      },
+      {
+        "run": "A3",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "cost_usd": 0.5
+      },
+      {
+        "run": "A4",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "cost_usd": 0.49
+      },
+      {
+        "run": "A5",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 8,
+        "result": "success",
+        "cost_usd": 0.48
+      },
+      {
+        "run": "B1",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief",
+          "frontend-design:frontend-design"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 1
+        },
+        "writes": 1,
+        "research_before_write": true,
+        "total_tool_calls": 31,
+        "result": "error_max_turns",
+        "cost_usd": 2.59
+      },
+      {
+        "run": "B2",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief",
+          "frontend-design:frontend-design"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 1
+        },
+        "writes": 16,
+        "research_before_write": true,
+        "total_tool_calls": 55,
+        "result": "error_max_turns",
+        "cost_usd": 3.87
+      },
+      {
+        "run": "C1",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "writes": 1,
+        "research_before_write": false,
+        "total_tool_calls": 5,
+        "result": "success",
+        "cost_usd": 0.25
+      },
+      {
+        "run": "C2",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "writes": 1,
+        "research_before_write": false,
+        "total_tool_calls": 8,
+        "result": "success",
+        "cost_usd": 0.3
+      },
+      {
+        "run": "D1",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 3,
+        "result": "success",
+        "cost_usd": 0.25
+      },
+      {
+        "run": "D2",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 4,
+        "result": "success",
+        "cost_usd": 0.25
+      },
+      {
+        "run": "E1",
+        "21st_server": "pending",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {},
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 19,
+        "result": "success",
+        "cost_usd": 0.89
+      },
+      {
+        "run": "E2",
+        "21st_server": "pending",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {},
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 14,
+        "result": "success",
+        "cost_usd": 1.32
+      },
+      {
+        "run": "E1b",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {},
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 16,
+        "result": "success",
+        "cost_usd": 0.88
+      },
+      {
+        "run": "E1c",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {},
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 16,
+        "result": "success",
+        "cost_usd": 0.8
+      },
+      {
+        "run": "E2b",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {
+          "search": 2
+        },
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 10,
+        "result": "success",
+        "cost_usd": 1.08
+      },
+      {
+        "run": "E2c",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 1
+        },
+        "writes": 0,
+        "research_before_write": true,
+        "total_tool_calls": 13,
+        "result": "success",
+        "cost_usd": 1.32
+      },
+      {
+        "run": "F1",
+        "21st_server": "absent",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {},
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 3,
+        "result": "success",
+        "cost_usd": 0.36
+      },
+      {
+        "run": "F2",
+        "21st_server": "absent",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {},
+        "writes": 0,
+        "research_before_write": false,
+        "total_tool_calls": 3,
+        "result": "success",
+        "cost_usd": 0.36
+      }
+    ]
+  }
+}

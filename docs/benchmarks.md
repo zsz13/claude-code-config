@@ -378,9 +378,11 @@ changed in tool selection. **Not proven** for the claim that component research
 improves the rendered page: it was tested once, and did not come out ahead.
 The step down from Measured is deliberate. Every count comes from a recorded
 run, but a reader cannot rerun them from this repository. Each condition is one
-build, the builds were judged by one model run, and the probe transcripts were
-not kept. The prompts, counts, render checks, judge report, composition plans
-and side-by-side boards are in [benchmarks/frontend-abc](benchmarks/frontend-abc/README.md).
+build, the builds were judged by one model run, and the original tool-selection
+probes' transcripts were not kept (the follow-up's are kept, unpublished). The prompts,
+counts, render checks, judge report, composition plans, follow-up probe results
+and side-by-side boards are in
+[benchmarks/frontend-abc](benchmarks/frontend-abc/README.md).
 
 Run on 2026-09-29 and 2026-09-30 with Claude Code 2.1.285 on `claude-opus-5-5`,
 headless, with the full global configuration loaded.
@@ -487,33 +489,127 @@ rather than in the plan, but the build also had four skills loaded and a fixed
 12-car dataset, so either could explain it. The paragraph needs a full-build
 test.
 
+**Follow-up: planning, fallback and established systems.** The 0/10 above, and
+the owner's decisions after the first review, changed the route:
+- `frontend-quality`'s description names planning, including a request for
+  advice on what a page should contain, and a request for a plan takes the route
+  of the work it plans;
+- substantial frontend work is defined once, in `frontend-quality`. Its
+  description repeats the list, because the description decides whether the
+  skill loads. `design-brief` and `rules/frontend.md` refer to it;
+- in a product with an established design system, research runs only when the
+  structure, an interaction pattern or the visual direction is genuinely new.
+  That rule is stated in `frontend-quality`'s "Research". The fallback's own
+  limit disagrees with it (see "Open issues" below);
+- with no research tool connected, `design-brief` writes an internal art
+  direction instead of skipping the step (structure only in an established
+  system);
+- `record_inspiration_feedback` is denied.
+
+Two rounds of probes followed, each with pass criteria fixed before its runs
+([protocol](benchmarks/frontend-abc/followup-protocol.md)).
+
+Round 1 ran an intermediate text. A four-judge review then found problems in
+both the text and the arms. The two most serious: the fallback's worked example
+was the probe's own domain, and the established-system prompts told the model the
+answer. The text and the arms were revised.
+
+Round 2 ran the final text, 25 runs, with 21st at user scope (connected at start
+in every run that needed it) and `get_component` disallowed:
+
+| Arm | Passed | Result |
+|---|---|---|
+| Substantial planning: the marketplace (3), a veterinary-clinic app (2) | 5/5 | Both skills loaded, then one `get_inspiration` and three `search` calls. Before the change: 0/10 on the marketplace prompt |
+| A substantial plan asked as a question ("What should the homepage … include?") | 2/2 | The same |
+| Substantial build | 2/2 | 21st called before the first write |
+| Trivial fix (2), trivial question (2), small new component (1), plan for a small fix (1) | 6/6 | No 21st call, and no skill loaded, in any of the six. For the component that is also a miss: the "New component" route should have loaded `frontend-quality`, and the run checked only the desktop layout |
+| Established system, a pattern the site lacks (a comparison view) | 2/2 | Researched with 21st; styles kept from the site |
+| Established system, a saved-cars page | **0/2** | Both added interactions the site lacks (a side-by-side view; one also an undo) and searched 21st, including for the page layout. One run called the page a new screen |
+| No research tool, greenfield: the marketplace (2), the clinic app (2) | 4/4 | An internal art direction with all four elements, and references from each product's own world |
+| No research tool, established system | 2/2 | Structure only; all styling from the site, and no new signature element |
+
+In the greenfield fallback runs, each product got references from its own world:
+- **the cars:** a window sticker, a service book, an auction catalogue;
+- **the clinic:** an appointment book, a kennel card, a treatment-room
+  whiteboard.
+
+The skill's own example is a wine shop; no reply used it. The fallback runs were
+scored by the person who made the change, from the replies, which are published.
+
+The saved-cars result is a failure against its pre-fixed criterion. Round 1's
+pass on the same page came from a prompt that said the page reuses existing
+patterns. So the gate has not been shown to hold when the model must judge. The
+comparison-view pass does not show the gate discriminates either, because a text
+that always researched would pass it too. Two things may have contributed:
+- the site's saved drawer already says "Compare them in the inventory", and both
+  runs searched for comparison tables;
+- `rules/frontend.md`, which loads when component files are read, summarizes the
+  route without the established-system exception.
+
+Each failing run made two metadata calls.
+
+Every probe's working directory is under a folder whose name contains "21st".
+That could prime a research arm; it cannot explain a run with zero 21st calls.
+
 **What this establishes:** the MCP went unused because of scope and routing, not
 because of the key or the server. With the scope fixed and the route in
-`frontend-quality` saying when to research, build requests for substantial work
-called it. That was 2/2 with the shipped text, and 6/6 across all three rule
-arms. A request only to plan the same product did not call it (0/10), because
-the route never loaded. Trivial fixes did not call it (0/4). On this product, a
-detailed design brief changed the rendered result more than adding 21st to that
-brief did.
+`frontend-quality` saying when to research, substantial work calls it on the
+final text:
+- planning: 5/5, against 0/10 before;
+- a plan asked as a question: 2/2;
+- builds: 2/2.
+
+Small work does not call it: 0/6 in round 2 (trivial fixes, questions, a small
+component, a plan for a small fix), and 0/4 in the original probes. With no
+research tool, a run states an internal art direction instead of skipping the
+phase (6/6, greenfield and established). No run without the new paragraph was
+made, so this does not show the paragraph causes it. In an established system,
+the gate did not hold research back for a page the model judged to be new
+(0/2). On this product, a detailed design brief changed
+the rendered result more than adding 21st to that brief did.
 
 **What it does not establish:** that component research improves a page. The one
 build that did it scored below the one that did not, and its worst decision came
-from a retrieved component. Nor does it show that the composition paragraph or
-the narrow-viewport navigation check changes a build (§9).
+from a retrieved component. Nor does it show that the composition paragraph, the
+narrow-viewport navigation check or the internal art direction changes a built
+page (§9).
 
 The judge was told all three had the detailed brief; legacy-auto did not, so its
 section score measures the gap to what the owner wants, not a failure to follow
 its prompt.
 
 Several behaviors were never exercised:
-- a small fix that loads `frontend-quality`;
-- a substantial request with 21st absent. With neither 21st nor a reference
-  server connected, the route has no research to run, and nothing replaces it;
-- 21st together with Refero or Mobbin;
-- `get_component` limited to React and Tailwind projects;
-- any product besides a used-car marketplace.
+- a small fix that loads `frontend-quality`. No trivial run loaded a skill, so
+  the small-fix exclusion itself was never in context;
+- an established-system page that the model judges reusable without being told.
+  No such run held research back;
+- research tools that are listed but unauthenticated, as Refero and Mobbin were
+  in the original failure. The fallback ran only with every server absent;
+- component-system work, a major redesign, a significant UX restructuring, and a
+  mid-size change such as a form or a modal;
+- 21st together with Refero or Mobbin. Both were unauthenticated in every run;
+- `get_component` limited to React and Tailwind projects. It was disallowed in
+  every probe;
+- the `record_inspiration_feedback` deny rule, beyond the tool's absence from the
+  session's tool list;
+- builds for any product besides a used-car marketplace.
 
-One product domain, one model, one build per condition.
+One model, one to five runs per probe cell (ten in the composition test), and one
+build per condition.
+
+**Open issues in the shipped text**, found by the final review and left for the
+owner, because changing the text would make round 2 test something other than
+what ships:
+- **Style in an established system with no tool connected.** "Research" says it
+  may inform style when the visual direction itself is open. The fallback in
+  `design-brief` says structure only, always. They disagree for a visual
+  redesign of an established product with no tool.
+- **`rules/frontend.md` misorders the route.** It says "research, `design-brief`,
+  then `frontend-design`", omits the established-system exception, and says
+  "trivial fix" where the skill says "small fix".
+- **Component-system work inside an existing product** matches two routes.
+- **Research can be earned by adding scope.** Both saved-cars runs added new
+  interactions, which then qualified for research.
 
 ---
 
@@ -538,6 +634,7 @@ Stated plainly so they are not mistaken for results:
 | Naming the defaults a direction can fall back to (a default card grid, empty hero, decorative metrics, gradient or glass, AI purple) as a check at the end of the reference step catches that fallback before building | **Hypothesis**. Untested. |
 | "Compose the page, do not stack it" in `design-brief` keeps an ordinary request from shipping hero, one grid and footer | **Hypothesis**. A plan-level test could not reach it: no run invoked the skill (§8). It needs full builds. |
 | The narrow-viewport check that every desktop destination stays reachable gets a mobile navigation built | **Hypothesis**. Untested. The build that lacked one predates the check (§8). |
+| Writing an internal art direction when no research tool is connected gives a more product-specific page than falling back to defaults | **Hypothesis**. The step runs (6/6 on the final text, §8); its output was never compared with a run without it, or built. |
 | Pointing at Motion's current docs prevents stale-API code in projects that use it | **Hypothesis**. Not tested. |
 | Naming when Motion is justified (layout and shared-element transitions, exit choreography, gestures, interruptible springs) gets it used there and nowhere else | **Rationale**. It is the owner's stated policy. Only the platform-first half was tested (§7). |
 | The whole setup improves engineering outcomes | **Untested.** There is no end-to-end measurement of output quality, and building an honest one is hard. |

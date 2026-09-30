@@ -127,7 +127,8 @@
       "mcp__21st__submit_component",
       "mcp__21st__withdraw_component",
       "mcp__21st__resubmit_component",
-      "mcp__21st__remove_component_from_catalog"
+      "mcp__21st__remove_component_from_catalog",
+      "mcp__21st__record_inspiration_feedback"
     ]
   },
   "enabledPlugins": {

@@ -1,6 +1,6 @@
 ---
 name: design-brief
-description: Establish a product-specific visual direction before building UI. Use for a new frontend product, a substantial redesign, a visually important new surface, or a project with no established design system.
+description: Establish a product-specific visual direction before planning or building UI. Use for substantial frontend work (the list in frontend-quality's description) whose structure, an interaction pattern or the visual direction is open, which is always the case in a project with no design system.
 ---
 
 # Design brief
@@ -28,8 +28,9 @@ what it already decided:
 - motion patterns;
 - copy voice.
 
-Then stop. Match it. (A new screen whose structure is still open also gets the
-reference research in step 3, for structure only.) Consistency beats novelty in
+Then stop. Match it. (A new screen also gets step 3's research when
+`frontend-quality`'s "Research" says research runs in an established system, and
+only for what that rule allows.) Consistency beats novelty in
 an established product, and "improving" a product into a different design
 language is a defect unless it was explicitly requested. A partial or
 inconsistent system means extract what is real, and note only the specific gaps
@@ -71,21 +72,42 @@ treatment.
 Use them as calibration. Never clone a third party's site pixel-for-pixel unless
 the user owns that design and explicitly asks for reproduction.
 
-**Researching references.** For a substantial new screen, flow, or redesign
-whose structure is still open, and no references were given, study how shipped
-products solved the same problem before choosing a direction:
+**Researching references.** For substantial frontend work (as
+`frontend-quality` defines it) whose structure is still open, and no references
+were given, study how shipped products solved the same problem before choosing a
+direction. In an established design system, `frontend-quality`'s "Research"
+decides whether this runs and what it may inform.
 
 - Search Refero first. Add Mobbin only when Refero's coverage of that screen
   type is weak, when mobile-app patterns are central, or when a second set
-  would change the decision. With neither connected, skip this screen
-  search; do not work from memory of famous products. Component-level
-  research (21st, in `frontend-quality`) still runs when it is available.
+  would change the decision. With neither connected, skip this screen search
+  and do not work from memory of famous products. Component research
+  (21st.dev, in `frontend-quality`'s "Research") runs alongside and does not
+  wait on these.
 - Pick two or three references because they solved a similar problem (the
   same user job, a similar data shape, similar constraints), never because
   the company is famous.
 - Extract the principles above, each with the reason it fits this product.
   Never average several unrelated products into a composite. In an
-  established design system, references inform structure only, never style.
+  established design system, references inform only what `frontend-quality`'s
+  "Research" allows.
+
+**With no research tool connected** (no Refero, Mobbin or 21st.dev), do not
+skip this step, and do not fall back to defaults or to memory of famous
+products. Write an internal art direction instead, and state it before the plan
+or any code. In an established design system, write only the structure per
+section and match the system's style: no new references for type or texture,
+and no new signature element.
+
+- **References from the subject's own world:** three to five artifacts,
+  documents or materials the product's users already know (for a wine shop: a
+  tasting note, a vintage chart, a cellar ledger), and what each lends to type,
+  layout, density or texture.
+- **Structure per section:** each section's job and the structure that job
+  needs, so that adjacent sections differ (see "Compose the page" below).
+- **Rejected defaults:** the default arrangements this direction will not use,
+  named.
+- **Signature element:** the one memorable move (step 4).
 
 If the direction that comes out is a default card grid, a large empty hero,
 decorative metrics, gradient or glass surfaces, or AI purple, it came from

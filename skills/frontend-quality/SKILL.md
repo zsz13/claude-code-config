@@ -1,6 +1,6 @@
 ---
 name: frontend-quality
-description: Routes frontend work by scope and verifies the rendered result in a real browser. Use for UI changes beyond a trivial fix, and whenever visual quality or responsive behavior matters.
+description: Routes frontend work by scope and verifies the rendered result in a real browser. Use for any UI change beyond a small fix, and before planning or building substantial frontend work - a new frontend or product, a landing or multi-section marketing page, a dashboard, an ecommerce, catalog or listing page, a new screen, a major redesign, building or restructuring a component system, or a significant UX restructuring - including when only a plan, an outline, or advice on what it should contain is asked for. Not for a small fix or a question about existing code.
 ---
 
 # Frontend quality
@@ -22,39 +22,86 @@ is not verification. Source-code aesthetics are not evidence. A screenshot is.
 PLAN -> BUILD -> RENDER -> LOOK -> CRITIQUE -> FIX -> RENDER AGAIN
 ```
 
-Never call substantial UI work done without a render you actually looked at.
+Never call UI work done without a render you actually looked at.
 
 ## Route by scope
 
-**Small UI fix** (spacing, a color token, a copy string, one broken style)
+Pick the route before planning, not only before building. A request for a plan,
+an outline, or advice on what a page should contain takes the route of the work
+it plans, up to the plan: research and direction come first, because the plan is
+where the structure gets decided. A question about existing code, or a plan for
+a small fix, takes the small-fix route.
+
+**Substantial frontend work** is defined here once: a new frontend or product; a
+landing or multi-section marketing page; a dashboard; an ecommerce, catalog or
+listing page; a new screen; a major redesign; building or restructuring a
+component system; or a significant UX restructuring. This skill's description
+repeats the list because the description decides whether the skill loads; change
+the two together. Every other rule here, in `design-brief` and in
+`rules/frontend.md` refers to this definition. Work inside an existing product
+takes "New screen or major redesign"; a new product, a landing page or a
+component system takes the last route.
+
+**Small UI fix** (spacing or alignment, a color or other token, a copy string,
+one broken style, a small bug fix)
 → read the surrounding design, change minimally, one browser check at the
 affected viewport. **Do not redesign.** Do not run the review stages or
-component research.
+research.
 
 **New component**
 → find the existing design system and its tokens → build from existing primitives
 → render → check states and both primary viewports.
 
 **New screen or major redesign**
-→ `design-brief` if no system exists or the direction is genuinely open
-→ if the screen's structure is open, invoke `design-brief` for its reference
-  research (step 3), even in an established system
+→ `design-brief` if no design system exists, or if "Research" says research runs
+→ research (see "Research")
 → `frontend-design` for the aesthetic work
-→ component research (see "Component libraries") before the visual plan is final
 → compact visual plan → implement → render
 → screenshots at ~375px and ~1280px → `visual-design-judge`
 → UX and accessibility pass → fix what matters → **render again**.
 
-**New product or landing page**
-→ `design-brief`, with its reference research unless references were given
-→ establish real content first
+**New product, landing page or component system**
+→ `design-brief`
+→ establish real content first (for a component system, the screens it serves)
+→ research (see "Research"), unless references were given
 → product-specific direction
-→ component research (see "Component libraries") for the hard sections
 → define tokens → `frontend-design` → build → browser iteration
 → `visual-design-judge` → UX and accessibility pass → final responsive check.
 
 Scale the process to the change. Running a five-stage review on a padding fix
 wastes context and buries real findings.
+
+## Research
+
+Study how others solved the hard parts before a plan is final.
+
+- **Substantial frontend work:** research is a step, not an option, with one
+  exception. In a product with an established design system it runs only when
+  the page's structure, an interaction pattern, or the visual direction is
+  genuinely open or new; a screen built from the system's existing patterns
+  matches the system and gets no outside research. When it does run there, it
+  informs structure and behavior, and style only when the visual direction
+  itself is what is open. This is the one statement of that rule; `design-brief`
+  refers to it.
+- **New component outside that work:** only when its behavior is the hard part
+  (a command palette, a data table, a dialog).
+- **Small UI fix, or a question about existing code:** never.
+
+Use every source that is connected; none waits on another:
+
+- **Screen references:** `design-brief` step 3 (Refero first, then Mobbin).
+- **Components (21st.dev):** when `mcp__21st__*` tools are listed (they are
+  deferred: load them with ToolSearch, e.g.
+  `select:mcp__21st__get_inspiration,mcp__21st__search`), run `get_inspiration`
+  once for the product (not for a component system) and `search` for the two to
+  four sections or components whose composition or behavior is the hard part
+  (hero, gallery, filtering, navigation, detail view, data table). Compare
+  several results and keep only what fits the direction. "Component libraries"
+  says what may be taken from them.
+- **None connected:** do not skip the phase and do not fall back to defaults.
+  For substantial work, write `design-brief`'s internal art direction (step 3)
+  and state it before the plan. For a new component, build from the system's
+  primitives and say that no research tool was available.
 
 ## Render it
 
@@ -76,7 +123,8 @@ intentionally keeps visual snapshots under version control.
 
 ## Viewports
 
-Minimum for substantial UI work: **~375px (mobile)** and **~1280px (desktop)**.
+Minimum for anything beyond a small fix: **~375px (mobile)** and **~1280px
+(desktop)**.
 Add **~768px (tablet)** and **1440–1600px+ (wide)** when the layout has
 breakpoints there or the content is dense.
 
@@ -152,29 +200,11 @@ other shadcn app. Preserve the accessibility behavior you inherit.
 
 The same holds for any component source: a registry, a component-search MCP
 (shadcn's in a shadcn project, 21st.dev's), or a community snippet. When to
-look there scales with the route:
-
-- **Substantial frontend work** (a new frontend or product, a landing or
-  multi-section marketing page, a dashboard, an ecommerce, catalog or listing
-  page, a new screen, a major redesign, component-system work, or a significant
-  UX restructuring): research is a step, not an option. When `mcp__21st__*`
-  tools are listed (they are deferred: load them with ToolSearch, e.g.
-  `select:mcp__21st__get_inspiration,mcp__21st__search`), run
-  `get_inspiration` once for the product and `search` for the two to four
-  sections whose composition or behavior is the hard part (hero, gallery,
-  filtering, navigation, detail view). Compare several results and keep only
-  what fits the direction. This holds even when Refero and Mobbin are not
-  connected.
-- **New component:** search only when its behavior is the hard part (a
-  command palette, a data table, a dialog).
-- **Small UI fix, copy change, spacing or alignment tweak, token tweak, or a
-  small bug fix:** never.
-
-Use search and source tools, never a hosted generator. `get_component` returns
-React + Tailwind source and, on the free tier, spends one of two daily
-retrievals: fetch code only in such a project, and only for a component you
-will actually adapt. Add a component to the project only when this work needs
-it.
+search one is under "Research". Use search and source tools, never a hosted
+generator. `get_component` returns React + Tailwind source and, on the free
+tier, spends one of two daily retrievals: fetch code only in such a project, and
+only for a component you will actually adapt. Add a component to the project
+only when this work needs it.
 Keep the behavior and accessibility, and restyle it to the project's tokens,
 type roles, spacing, radius, density, and interaction model. A demo's palette,
 radius, or type never becomes the product's; its composition is a reference to
