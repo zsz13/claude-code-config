@@ -162,12 +162,16 @@ audit was designed with no state at all.
   session. `config/settings.example.json` names six plugins from three
   marketplaces. Evaluate them yourself; being listed here is not an audit.
 - **Remote MCP servers receive your queries.** The screen-reference servers
-  (Refero, Mobbin) are at user scope, and 21st.dev's is connected per project.
-  Every query leaves the machine, and a keyed server's key sits in plain text in
-  `~/.claude.json`. `permissions.deny` in `settings.json` blocks 21st.dev's
-  generation, publishing and account-write tools. It matches by server and tool
-  name, so a server connected under another name, or a renamed tool, is not
-  blocked.
+  (Refero, Mobbin) and 21st.dev's component-research server are at user scope.
+  Every query leaves the machine. With 21st.dev at user scope, substantial
+  frontend work in any repository sends product and section descriptions to it
+  unasked, because `frontend-quality` makes that research a step; disable the
+  server for a project that must not send them. A keyed server's key sits in
+  plain text in `~/.claude.json`. `permissions.deny` in `settings.json` blocks
+  21st.dev's generation, publishing and account-write tools, but not
+  `record_inspiration_feedback`, which sends accept and reject signals under the
+  key. It matches by server and tool name, so a server connected under another
+  name, or a renamed tool, is not blocked.
 - **Skills and agents are instructions, not code.** They cannot execute anything
   on their own, but they do shape what the model does with tools it already has.
 - **The installer writes only under `$HOME/.claude` (or `$CLAUDE_CONFIG_DIR`)**

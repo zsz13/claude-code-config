@@ -1,0 +1,219 @@
+{
+  "note": "Counted from the headless stream-json transcripts. Build counts include subagent calls. Probe transcripts were not kept; their counts are the ones recorded when each probe was counted.",
+  "builds": {
+    "control": {
+      "total_tool_calls": 476,
+      "21st_total": 0,
+      "21st": {},
+      "tool_search_calls": 1,
+      "refero": 0,
+      "mobbin": 0,
+      "playwright": 232,
+      "skills": [
+        "frontend-design:frontend-design",
+        "design-brief",
+        "frontend-quality",
+        "adversarial-jury"
+      ],
+      "subagents": 3,
+      "cost_usd": 19.19
+    },
+    "21st": {
+      "total_tool_calls": 447,
+      "21st_total": 40,
+      "21st": {
+        "get_usage": 1,
+        "get_inspiration": 4,
+        "search": 22,
+        "get_theme": 2,
+        "search_logo": 2,
+        "get_component": 2,
+        "record_inspiration_feedback": 7
+      },
+      "tool_search_calls": 5,
+      "refero": 0,
+      "mobbin": 0,
+      "playwright": 133,
+      "skills": [
+        "design-brief",
+        "frontend-design:frontend-design",
+        "frontend-quality",
+        "adversarial-jury"
+      ],
+      "subagents": 3,
+      "cost_usd": 26.52
+    },
+    "legacy-auto": {
+      "total_tool_calls": 359,
+      "21st_total": 0,
+      "21st": {},
+      "tool_search_calls": 2,
+      "refero": 0,
+      "mobbin": 0,
+      "playwright": 164,
+      "skills": [
+        "frontend-quality",
+        "design-brief",
+        "frontend-design:frontend-design",
+        "adversarial-jury"
+      ],
+      "subagents": 4,
+      "cost_usd": 14.8
+    }
+  },
+  "probes": {
+    "prompt_substantial": "Build a frontend for a used car marketplace: a homepage with a hero, vehicle search, a listings grid with filters, and a vehicle detail view. Use Next.js with TypeScript and Tailwind in this directory, mock data only, no backend.",
+    "prompt_trivial_font": "The footer text is a little too small. Bump the footer font size up one step.",
+    "prompt_trivial_copy": "Change the hero subheading copy to: Hand-checked enthusiast cars, listed with their history.",
+    "arms": [
+      {
+        "arm": "generic",
+        "condition": "old skills, 21st connected, no rule",
+        "runs": [
+          {
+            "run": "generic-1",
+            "prompt": "substantial",
+            "21st": {},
+            "total_tool_calls": 88,
+            "skills": [
+              "design-brief",
+              "frontend-quality",
+              "frontend-design:frontend-design"
+            ]
+          },
+          {
+            "run": "generic-2",
+            "prompt": "substantial",
+            "21st": {},
+            "total_tool_calls": 46,
+            "skills": [
+              "design-brief",
+              "frontend-quality",
+              "frontend-design:frontend-design"
+            ]
+          },
+          {
+            "run": "generic-3",
+            "prompt": "substantial",
+            "21st": {},
+            "total_tool_calls": 46,
+            "skills": [
+              "design-brief",
+              "frontend-quality",
+              "frontend-design:frontend-design"
+            ]
+          }
+        ],
+        "note": "skill order differed per run; all three loaded these three"
+      },
+      {
+        "arm": "draft-rule",
+        "condition": "old skills, 21st connected, draft trigger rule appended to the system prompt, get_component disallowed",
+        "runs": [
+          {
+            "run": "rule-1",
+            "prompt": "substantial",
+            "21st": {
+              "get_inspiration": 1,
+              "search": 3
+            },
+            "total_tool_calls": 38
+          },
+          {
+            "run": "rule-2",
+            "prompt": "substantial",
+            "21st": {
+              "get_inspiration": 1,
+              "search": 3
+            },
+            "total_tool_calls": 36
+          },
+          {
+            "run": "rule-negative",
+            "prompt": "trivial_font",
+            "21st": {},
+            "total_tool_calls": 4
+          }
+        ]
+      },
+      {
+        "arm": "proposed-text",
+        "condition": "old skills, 21st connected, the proposed skill text appended to the system prompt, get_component disallowed",
+        "runs": [
+          {
+            "run": "proposed-1",
+            "prompt": "substantial",
+            "21st": {
+              "get_inspiration": 1,
+              "search": 3
+            },
+            "total_tool_calls": 37
+          },
+          {
+            "run": "proposed-2",
+            "prompt": "substantial",
+            "21st": {
+              "get_inspiration": 1,
+              "search": 3
+            },
+            "total_tool_calls": 26
+          },
+          {
+            "run": "proposed-negative",
+            "prompt": "trivial_font",
+            "21st": {},
+            "total_tool_calls": 18
+          }
+        ]
+      },
+      {
+        "arm": "persistent",
+        "condition": "new skills installed, 21st at user scope, no flags",
+        "runs": [
+          {
+            "run": "persistent-1",
+            "prompt": "substantial",
+            "21st": {
+              "get_inspiration": 1,
+              "search": 3
+            },
+            "total_tool_calls_when_counted": 14,
+            "skills": [
+              "frontend-quality",
+              "design-brief",
+              "frontend-design:frontend-design"
+            ]
+          },
+          {
+            "run": "persistent-2",
+            "prompt": "substantial",
+            "21st": {
+              "get_inspiration": 1,
+              "search": 3
+            },
+            "total_tool_calls_when_counted": 10,
+            "skills": [
+              "frontend-quality",
+              "design-brief",
+              "frontend-design:frontend-design"
+            ]
+          },
+          {
+            "run": "persistent-neg-font",
+            "prompt": "trivial_font",
+            "21st": {},
+            "total_tool_calls": 4,
+            "skills": []
+          },
+          {
+            "run": "persistent-neg-copy",
+            "prompt": "trivial_copy",
+            "21st": {},
+            "total_tool_calls": 4,
+            "skills": []
+          }
+        ]
+      }
+    ]
+  }
+}

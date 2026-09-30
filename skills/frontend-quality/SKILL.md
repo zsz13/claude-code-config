@@ -28,7 +28,8 @@ Never call substantial UI work done without a render you actually looked at.
 
 **Small UI fix** (spacing, a color token, a copy string, one broken style)
 → read the surrounding design, change minimally, one browser check at the
-affected viewport. **Do not redesign.** Do not run the review stages.
+affected viewport. **Do not redesign.** Do not run the review stages or
+component research.
 
 **New component**
 → find the existing design system and its tokens → build from existing primitives
@@ -39,6 +40,7 @@ affected viewport. **Do not redesign.** Do not run the review stages.
 → if the screen's structure is open, invoke `design-brief` for its reference
   research (step 3), even in an established system
 → `frontend-design` for the aesthetic work
+→ component research (see "Component libraries") before the visual plan is final
 → compact visual plan → implement → render
 → screenshots at ~375px and ~1280px → `visual-design-judge`
 → UX and accessibility pass → fix what matters → **render again**.
@@ -47,6 +49,7 @@ affected viewport. **Do not redesign.** Do not run the review stages.
 → `design-brief`, with its reference research unless references were given
 → establish real content first
 → product-specific direction
+→ component research (see "Component libraries") for the hard sections
 → define tokens → `frontend-design` → build → browser iteration
 → `visual-design-judge` → UX and accessibility pass → final responsive check.
 
@@ -79,7 +82,8 @@ breakpoints there or the content is dense.
 
 At each, check: overflow, clipping, wrapping, hierarchy, whitespace, density,
 sticky/fixed elements, navigation, tap targets, responsive reflow, text measure,
-and content ordering.
+and content ordering. At the narrow viewport every destination the desktop
+navigation offers must still be reachable; hiding the links is not a mobile nav.
 
 A UI that only holds up at one viewport is not done. These are *review*
 viewports — do not hardcode them into product CSS.
@@ -147,11 +151,30 @@ then customize tokens and composition so the product does not look like every
 other shadcn app. Preserve the accessibility behavior you inherit.
 
 The same holds for any component source: a registry, a component-search MCP
-(shadcn's in a shadcn project, 21st.dev's in a React and Tailwind one), or a
-community snippet. Look there when a specific element is the hard part: its
-behavior (a command palette, a data table, a dialog) or its composition (a
-pricing section, a hero, a card). Use search and source tools, never a hosted
-generator, and add a component to the project only when this work needs it.
+(shadcn's in a shadcn project, 21st.dev's), or a community snippet. When to
+look there scales with the route:
+
+- **Substantial frontend work** (a new frontend or product, a landing or
+  multi-section marketing page, a dashboard, an ecommerce, catalog or listing
+  page, a new screen, a major redesign, component-system work, or a significant
+  UX restructuring): research is a step, not an option. When `mcp__21st__*`
+  tools are listed (they are deferred: load them with ToolSearch, e.g.
+  `select:mcp__21st__get_inspiration,mcp__21st__search`), run
+  `get_inspiration` once for the product and `search` for the two to four
+  sections whose composition or behavior is the hard part (hero, gallery,
+  filtering, navigation, detail view). Compare several results and keep only
+  what fits the direction. This holds even when Refero and Mobbin are not
+  connected.
+- **New component:** search only when its behavior is the hard part (a
+  command palette, a data table, a dialog).
+- **Small UI fix, copy change, spacing or alignment tweak, token tweak, or a
+  small bug fix:** never.
+
+Use search and source tools, never a hosted generator. `get_component` returns
+React + Tailwind source and, on the free tier, spends one of two daily
+retrievals: fetch code only in such a project, and only for a component you
+will actually adapt. Add a component to the project only when this work needs
+it.
 Keep the behavior and accessibility, and restyle it to the project's tokens,
 type roles, spacing, radius, density, and interaction model. A demo's palette,
 radius, or type never becomes the product's; its composition is a reference to

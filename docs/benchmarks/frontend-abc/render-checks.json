@@ -1,0 +1,126 @@
+{
+  "note": "Playwright checks against the running dev servers (Chromium). Page height is the full scroll height in CSS px. A step passes when its locator was found and the action completed within 8 s.",
+  "health": {
+    "control@1440": {
+      "pageHeight": 7838,
+      "horizontalOverflow": false,
+      "consoleMessages": 0,
+      "brokenImages": 0
+    },
+    "control@1280": {
+      "pageHeight": 7502,
+      "horizontalOverflow": false,
+      "consoleMessages": 0,
+      "brokenImages": 0
+    },
+    "control@390": {
+      "pageHeight": 13148,
+      "horizontalOverflow": false,
+      "consoleMessages": 0,
+      "brokenImages": 0
+    },
+    "21st@1440": {
+      "pageHeight": 9213,
+      "horizontalOverflow": false,
+      "consoleMessages": 0,
+      "brokenImages": 0
+    },
+    "21st@1280": {
+      "pageHeight": 9312,
+      "horizontalOverflow": false,
+      "consoleMessages": 1,
+      "brokenImages": 0
+    },
+    "21st@390": {
+      "pageHeight": 11958,
+      "horizontalOverflow": false,
+      "consoleMessages": 1,
+      "brokenImages": 0
+    },
+    "legacy-auto@1440": {
+      "pageHeight": 3362,
+      "horizontalOverflow": false,
+      "consoleMessages": 0,
+      "brokenImages": 0
+    },
+    "legacy-auto@1280": {
+      "pageHeight": 3323,
+      "horizontalOverflow": false,
+      "consoleMessages": 0,
+      "brokenImages": 0
+    },
+    "legacy-auto@390": {
+      "pageHeight": 8056,
+      "horizontalOverflow": false,
+      "consoleMessages": 0,
+      "brokenImages": 0
+    }
+  },
+  "health_console_detail": {
+    "21st@1280": [
+      "warning: Image with src \"/cars/porsche-911-964-1.jpg\" was detected as the Largest Contentful Paint (LCP). Please add the `loading=\"eager\"` property if this image is above the fold."
+    ],
+    "21st@390": [
+      "warning: Image with src \"/cars/porsche-911-964-1.jpg\" was detected as the Largest Contentful Paint (LCP). Please add the `loading=\"eager\"` property if this image is above the fold."
+    ]
+  },
+  "interactions": {
+    "control@1440": {
+      "header-scrolled": "pass",
+      "inventory": "pass",
+      "card-hover": "pass",
+      "search": "pass",
+      "filter-applied": "pass",
+      "favorite": "pass",
+      "details": "pass"
+    },
+    "control@390": {
+      "header-scrolled": "pass",
+      "inventory": "pass",
+      "search": "pass",
+      "filter-sheet": "pass",
+      "filter-applied": "pass",
+      "favorite": "pass",
+      "details": "pass",
+      "menu": "pass"
+    },
+    "21st@1440": {
+      "header-scrolled": "pass",
+      "inventory": "pass",
+      "card-hover": "pass",
+      "search": "pass",
+      "filter-applied": "pass",
+      "favorite": "pass",
+      "details": "pass"
+    },
+    "21st@390": {
+      "header-scrolled": "pass",
+      "inventory": "pass",
+      "search": "pass",
+      "filter-sheet": "pass",
+      "filter-applied": "pass",
+      "favorite": "pass",
+      "details": "pass",
+      "menu": "pass"
+    },
+    "legacy-auto@1440": {
+      "header-scrolled": "pass",
+      "inventory": "pass",
+      "card-hover": "pass",
+      "search": "pass",
+      "filter-applied": "pass",
+      "favorite": "pass",
+      "details": "pass"
+    },
+    "legacy-auto@390": {
+      "header-scrolled": "pass",
+      "inventory": "pass",
+      "search": "pass",
+      "filter-sheet": "pass",
+      "filter-applied": "pass",
+      "favorite": "pass",
+      "details": "pass",
+      "menu": "fail: FAILED: TimeoutError: Locator.click: Timeout 8000ms exceeded"
+    }
+  }
+}

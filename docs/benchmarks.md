@@ -371,7 +371,153 @@ automatically, identical across arms.
 
 ---
 
-## 8. Claims made with no measurement at all
+## 8. Frontend research trigger and three-way build
+
+**Class: Observed** for why 21st.dev's MCP went unused and for what the fix
+changed in tool selection. **Not proven** for the claim that component research
+improves the rendered page: it was tested once, and did not come out ahead.
+The step down from Measured is deliberate. Every count comes from a recorded
+run, but a reader cannot rerun them from this repository. Each condition is one
+build, the builds were judged by one model run, and the probe transcripts were
+not kept. The prompts, counts, render checks, judge report, composition plans
+and side-by-side boards are in [benchmarks/frontend-abc](benchmarks/frontend-abc/README.md).
+
+Run on 2026-09-29 and 2026-09-30 with Claude Code 2.1.285 on `claude-opus-5-5`,
+headless, with the full global configuration loaded.
+
+**The question.** 21st.dev's MCP had a valid key and answered every call, yet no
+frontend session called it, and built pages looked generated. Why, and does
+calling it help?
+
+**Why it went unused.** Scope and routing were checked directly. Discovery is a
+contributing condition that no arm isolated.
+
+- **Scope.** It had been added from the home directory, so its local scope was
+  the home directory's. No session opened in a repository loaded it.
+- **Routing.** `design-brief`'s research step named only Refero and Mobbin.
+  Neither was signed in, so the step was skipped. The legacy build said so:
+  "the Mobbin and Refero design-reference tools need authorizing … I set the
+  visual direction without them." `frontend-quality` mentioned 21st.dev only as
+  a place to look when one element is the hard part.
+- **Discovery.** MCP tools are deferred, so a session sees their names only, and
+  this server sends no instructions.
+
+Tool-selection probes, with 21st connected in every arm. The substantial prompt
+asked for a used-car marketplace frontend (hero, search, filtered listings,
+detail view). The trivial prompts were a footer font-size bump and a one-line
+copy change. The two middle arms appended earlier drafts to the system prompt
+and disallowed `get_component`. The second draft still limited research to React
+and Tailwind projects, and its lists of substantial and trivial work were
+shorter. Only the installed arm ran the text this repository ships.
+
+| Arm | Substantial prompt called 21st | Trivial fix called 21st |
+|---|---|---|
+| As configured (all three loaded `design-brief` and `frontend-quality`) | 0/3 | not run |
+| + a first draft of the trigger rule in the system prompt | 2/2 | 0/1 |
+| + a later draft of the skill text in the system prompt | 2/2 | 0/1 |
+| Installed: the shipped skills, 21st at user scope, no flags | 2/2 | 0/2 |
+
+Every probe that called 21st made one `get_inspiration` and three `search`
+calls. The two installed substantial runs were stopped after those calls, so
+that the composition test below could run alone. The two installed trivial runs
+loaded no skill at all. They show that 21st at user scope is not called for a
+small fix, not that the skill's small-fix exclusion causes it. That exclusion was
+never in context in any trivial run.
+
+**Three builds from one product.** Same scaffold, data, photos and model, each
+built in its own directory without sight of the others. What differed was the
+prompt:
+
+| | legacy-auto | control | 21st |
+|---|---|---|---|
+| Prompt | An ordinary request, configuration as it was, 21st connected but not mentioned | A detailed brief with an avoid-list, 21st forbidden | The same brief, plus heavy 21st use |
+| 21st calls | 0 | 0 | 40 (22 `search`, 7 feedback, 4 `get_inspiration`, 2 `get_component`, 2 `get_theme`, 2 `search_logo`, 1 `get_usage`) |
+| Tool calls, including subagents | 359 | 476 | 447 |
+| Cost | $14.80 | $19.19 | $26.52 |
+| Page height at 1440px | 3,362px | 7,838px | 9,213px |
+| Mobile menu | none | full-screen | full-screen, with car thumbnails |
+| Blind judge, mean of 13 criteria | 5.8 | 7.8 | 7.1 |
+
+All three pass `npm run build` and lint (rerun on 2026-09-30), and render with
+no horizontal overflow or broken images. Every scripted interaction step
+completed, except legacy-auto's mobile menu, which does not exist. "Completed"
+means the control was found and the action performed within 8 seconds; the check
+does not confirm what the action did. The judge saw anonymized screenshots and
+ranked control first, 21st a moderate gap behind, and legacy-auto a large gap
+behind that. By its account legacy-auto has the best-built filters and detail
+modal, but only three sections (hero, inventory, footer) and no mobile
+navigation.
+
+What 21st contributed is recorded call by call in the build's log. Its two code
+retrievals became the hero filmstrip and the list-with-image-preview used for
+collections, and searches set the filter rail, the price histogram, the drawer
+motion and the mobile menu. Its catalog was thin for this product. Template and
+theme searches for automotive or editorial returned nothing, and searches for a
+car hero, an editorial bento and a spec sheet returned only SaaS components. The
+one automotive result, a video-scrub hero from `get_inspiration`, needed video
+frames the build did not have. The judge's weakest decision in that build, the
+colour-tinted hero, is the retrieved hero's background re-grade, applied with
+each car's paint colour. Its strongest, the mixed-size gallery, was built by hand
+after 21st's bento results were rejected.
+
+All three converged on a warm off-white page, a wide display typeface, a left
+filter sidebar beside a three-column grid, a round heart top-right on every
+photo, and a mobile sheet with "Clear all" and "Show N cars". Control and 21st
+also both named the site "Chicane".
+
+**The composition paragraph: a plan-level test that could not reach it.**
+`design-brief` gained a paragraph against stacking (hero, one grid, footer). The
+protocol was fixed before any run: five fresh sessions per arm, with the
+paragraph removed or present. The prompt was the legacy request's product and
+feature list, without its prepared scaffold, data and photos, plus "only plan the
+homepage's sections". Writes were disallowed.
+
+No run in either arm invoked `design-brief`, or any skill, so the paragraph never
+entered context. By the protocol, all ten runs are uninformative.
+
+The same ten runs are also a tool-selection result for the shipped
+configuration. 21st was connected and the shipped `frontend-quality` was
+installed, yet 0/10 called 21st, because a request to plan loaded no skill. All
+ten noted that Mobbin and Refero needed signing in; none mentioned 21st.
+
+One further observation came out. All ten plans proposed seven or eight
+sections, none a stack, and all ten named a mobile menu. Legacy-auto shipped
+three sections and no menu. That suggests the stacking happens during the build
+rather than in the plan, but the build also had four skills loaded and a fixed
+12-car dataset, so either could explain it. The paragraph needs a full-build
+test.
+
+**What this establishes:** the MCP went unused because of scope and routing, not
+because of the key or the server. With the scope fixed and the route in
+`frontend-quality` saying when to research, build requests for substantial work
+called it. That was 2/2 with the shipped text, and 6/6 across all three rule
+arms. A request only to plan the same product did not call it (0/10), because
+the route never loaded. Trivial fixes did not call it (0/4). On this product, a
+detailed design brief changed the rendered result more than adding 21st to that
+brief did.
+
+**What it does not establish:** that component research improves a page. The one
+build that did it scored below the one that did not, and its worst decision came
+from a retrieved component. Nor does it show that the composition paragraph or
+the narrow-viewport navigation check changes a build (§9).
+
+The judge was told all three had the detailed brief; legacy-auto did not, so its
+section score measures the gap to what the owner wants, not a failure to follow
+its prompt.
+
+Several behaviors were never exercised:
+- a small fix that loads `frontend-quality`;
+- a substantial request with 21st absent. With neither 21st nor a reference
+  server connected, the route has no research to run, and nothing replaces it;
+- 21st together with Refero or Mobbin;
+- `get_component` limited to React and Tailwind projects;
+- any product besides a used-car marketplace.
+
+One product domain, one model, one build per condition.
+
+---
+
+## 9. Claims made with no measurement at all
 
 Stated plainly so they are not mistaken for results:
 
@@ -385,9 +531,13 @@ Stated plainly so they are not mistaken for results:
 | The large-output advisor changes command choice | **Hypothesis** — same. |
 | One-hint-per-session-per-class is the right frequency | **Rationale** — chosen to avoid nagging, never tuned. |
 | Telling `visual-design-judge` what data the product already holds makes its first-viewport check fire when no other render shows that data | **Hypothesis**. In testing, the data was visible in a second render; the packet line itself was not tested. |
-| The component-search and screen-reference hooks, used only when such an MCP is connected, lead to adapted components and principle-level references rather than pasted ones | **Rationale**. No such server was connected in testing. |
+| The screen-reference hook, used only when Refero or Mobbin is connected, leads to principle-level references rather than copied screens | **Rationale**. No reference server was signed in during testing. |
+| Component research adapts rather than pastes | **Rationale**. One self-reported instance (§8): the 21st build's log says it restyled both retrieved components and removed behaviors that did not fit. The component source is not published, the build was told to use 21st heavily, and the re-grade it kept from the retrieved hero was the judge's weakest decision. |
+| Requiring component research for substantial frontend work | **Rationale**. It is the owner's stated policy. It was tested once (§8) and did not come out ahead; what the step fixes is that research never ran at all. |
 | Researching two or three shipped products that solved the same problem (Refero first, Mobbin only when useful, never averaged) gives a screen more product-specific structure than designing without them | **Rationale**. It is the owner's stated policy. No reference server was authenticated or measured. |
 | Naming the defaults a direction can fall back to (a default card grid, empty hero, decorative metrics, gradient or glass, AI purple) as a check at the end of the reference step catches that fallback before building | **Hypothesis**. Untested. |
+| "Compose the page, do not stack it" in `design-brief` keeps an ordinary request from shipping hero, one grid and footer | **Hypothesis**. A plan-level test could not reach it: no run invoked the skill (§8). It needs full builds. |
+| The narrow-viewport check that every desktop destination stays reachable gets a mobile navigation built | **Hypothesis**. Untested. The build that lacked one predates the check (§8). |
 | Pointing at Motion's current docs prevents stale-API code in projects that use it | **Hypothesis**. Not tested. |
 | Naming when Motion is justified (layout and shared-element transitions, exit choreography, gestures, interruptible springs) gets it used there and nowhere else | **Rationale**. It is the owner's stated policy. Only the platform-first half was tested (§7). |
 | The whole setup improves engineering outcomes | **Untested.** There is no end-to-end measurement of output quality, and building an honest one is hard. |

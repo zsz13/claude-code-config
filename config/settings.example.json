@@ -123,7 +123,11 @@
       "mcp__21st__upload_profile_media",
       "mcp__21st__bookmark",
       "mcp__21st__create_bookmark_list",
-      "mcp__21st__add_to_list"
+      "mcp__21st__add_to_list",
+      "mcp__21st__submit_component",
+      "mcp__21st__withdraw_component",
+      "mcp__21st__resubmit_component",
+      "mcp__21st__remove_component_from_catalog"
     ]
   },
   "enabledPlugins": {

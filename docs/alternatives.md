@@ -99,7 +99,7 @@ panel is small and agrees with concrete evidence.
 | **Component generators** (hosted UI generation, stock-block MCPs) | Generation returns the generator's look, and stock blocks are more template chrome: the failure this layer exists to remove. Discovery that returns source to adapt is a different thing, and is below. |
 | **Motion's AI Kit, installed globally** | It adds a `/motion` skill and MCP servers. The free part is docs search; spring generation, audits and examples need a paid Motion+ sign-in. A global skill would pull every animation task toward a library the policy adds only when the platform cannot do the job. `frontend-quality` reads Motion's current docs on demand instead, in projects that already use it. |
 | **Figma's MCP** | Only useful where Figma files are the source of truth, and a large surface. Per project, if ever. |
-| **Composition and density rules in the build path** (a line in `rules/frontend.md`, or a section in `frontend-quality` or `design-brief`) | Tested before writing, and the failure did not reproduce. Ten fresh-context plans for a price-comparison brief all put real prices in the first viewport, grouped the one store holding most of the cheapest offers, and used desktop width for comparison columns ([benchmarks](benchmarks.md#7-design-layer-micro-tests)). That is weaker than it sounds: the fixture showed the data and its shape outright. The shipped screens that did fail were following a brief that mandated the repetition, and a builder rule cannot outrank the brief. Surfacing a cost the brief imposes is a review job, so the review lens changed instead. The closing check of `design-brief`'s reference step, which names the defaults to go back from, is not such a rule: it is the owner's policy, sits where references are chosen, and is untested ([benchmarks](benchmarks.md#8-claims-made-with-no-measurement-at-all)). |
+| **Density rules in the build path** (a line in `rules/frontend.md`, or a section in `frontend-quality` or `design-brief`) | Tested before writing, and the failure did not reproduce. Ten fresh-context plans for a price-comparison brief all put real prices in the first viewport, grouped the one store holding most of the cheapest offers, and used desktop width for comparison columns ([benchmarks](benchmarks.md#7-design-layer-micro-tests)). That is weaker than it sounds: the fixture showed the data and its shape outright. The shipped screens that did fail were following a brief that mandated the repetition, and a builder rule cannot outrank the brief. Surfacing a cost the brief imposes is a review job, so the review lens changed instead. The closing check of `design-brief`'s reference step, which names the defaults to go back from, is not such a rule: it is the owner's policy, sits where references are chosen, and is untested ([benchmarks](benchmarks.md#9-claims-made-with-no-measurement-at-all)). *Page composition* is the exception, and is now in `design-brief`: a full build from an ordinary request did fail there, shipping hero, one grid and footer with no mobile navigation ([benchmarks](benchmarks.md#8-frontend-research-trigger-and-three-way-build)). Whether the paragraph prevents that is untested. |
 | **A motion rule** in `rules/frontend.md` | Five runs on interactions CSS can do all chose CSS (`@starting-style`, `grid-template-rows`), animated nothing on a re-sort, and added no dependency. The platform-first half needs no rule. The other half, when Motion is justified, is one sentence in `frontend-quality` and is untested. |
 
 ### Chosen: reference and component MCPs without their skills
@@ -120,20 +120,37 @@ here load through tool search, so what every session pays for a user-scope serve
 is its tool names and any instructions it sends; check `/context` after signing
 in.
 
-shadcn's, Motion's and 21st.dev's servers are per project: each helps only where
-the project uses its stack. 21st.dev needs a key, so it goes in the default local
-scope, which is private. Every 21st.dev tool that generates, publishes or writes
-to the account is denied in user `settings.json`
-([template](../config/settings.example.json)), so the guard holds in any project
-that connects it. The rules match a server named `21st`: connect it with the
-command below rather than the vendor's CLI, whose server name was not checked, or
-rename the rules.
+shadcn's and Motion's servers are per project: each helps only where the project
+uses its stack. 21st.dev's started out per project too and is now at user scope,
+for two reasons found in a diagnostic run
+([benchmarks](benchmarks.md#8-frontend-research-trigger-and-three-way-build)).
+First, per project meant never: it had been added from the home directory, so
+its local scope was the home directory's, and no session in a real repository
+ever loaded it. A new project, where component research matters most, never has
+it either. Second, its research tools (`search`, `get_inspiration`) return
+metadata and preview images, which help any web stack. Only `get_component`
+returns React and Tailwind source, and `frontend-quality` fetches code only in
+such a project. In context, what user scope costs every session is the tool
+names, since MCP tools load through tool search: the server sends no
+instructions. Every session does connect to it with the key, though. When the
+tools are called is decided by the route in `frontend-quality`: substantial
+work researches, a small fix never does. With neither 21st.dev nor a reference
+server connected, substantial work gets no outside research at all; nothing
+replaces it ([benchmarks](benchmarks.md#8-frontend-research-trigger-and-three-way-build)).
+
+Every 21st.dev tool that generates, publishes, or writes to the account's
+profile, bookmarks or catalog entries is denied in user `settings.json`
+([template](../config/settings.example.json)). One tool that sends data is left
+allowed: `record_inspiration_feedback` records an accept or reject on an
+inspiration result under the key, and feeds 21st.dev's ranking. The rules
+match a server named `21st`: connect it with the command below rather than the
+vendor's CLI, whose server name was not checked, or rename the rules.
 
 | Tool | Where it applies | Setup |
 |---|---|---|
 | Refero MCP | Primary screen and flow references. Needs a paid plan (Pro, Team or Lifetime). Queries leave the machine | `claude mcp add --scope user --transport http refero https://api.refero.design/mcp`, the MCP only, not the plugin. Sign in with `/mcp`; with an API token instead, add `--header "Authorization: Bearer YOUR_TOKEN"` |
 | Mobbin MCP | Second reference set, strongest on mobile apps. Pro, Team or Enterprise plan, not Free. Queries leave the machine | `claude mcp add --scope user --transport http mobbin https://api.mobbin.com/mcp`. Sign in with `/mcp` |
-| 21st.dev MCP | React and Tailwind projects that need a component's behavior or composition as a reference. API key; search and component reads are free, generation spends credits | In the project: `claude mcp add --transport http 21st https://21st.dev/api/mcp --header "x-api-key: YOUR_API_KEY"`, the MCP only, not the plugin |
+| 21st.dev MCP | Component and composition research for substantial frontend work, routed by `frontend-quality`. API key. `search`, `get_inspiration`, `get_theme` and `search_logo` are free metadata; on the free tier `get_component` (React and Tailwind source) allows two retrievals a day; hosted generation needs a paid AI entitlement and is denied here anyway | `claude mcp add --scope user --transport http 21st https://21st.dev/api/mcp --header "x-api-key: YOUR_API_KEY"`, the MCP only, not the plugin |
 | shadcn MCP (official) | Projects that already use shadcn/ui; it reads registries from `components.json` and returns source | `npx shadcn@latest mcp init --client claude` (writes the project's `.mcp.json`) |
 | Motion docs MCP | Projects that depend on Motion and want docs search in the session; otherwise `frontend-quality` points at motion.dev/docs. Free, no account | `claude mcp add --scope project --transport http motion https://mcp.motion.dev` |
 
@@ -141,11 +158,18 @@ Mobbin's command is its own documentation's, and Refero's is its documented
 MCP-only form with the token header left off for OAuth (both as of 2026-09-28).
 Both were run, and both servers answered with a sign-in challenge. 21st.dev
 documents a CLI that writes a project `.mcp.json`; the command above pairs its
-documented endpoint and header with Claude Code's `claude mcp add` syntax, and has
-not been run. The denied tool names come from 21st.dev's MCP documentation. A deny
-rule for a renamed tool silently stops matching, so compare them with the tools
-`/mcp` lists once the server is connected. The shadcn command is shadcn's own;
-Motion's transport is inferred from its HTTPS endpoint.
+documented endpoint and header with Claude Code's `claude mcp add` syntax. On
+2026-09-29 that endpoint and header answered `initialize` and `tools/list` with a
+valid key (and 401 without one), and a Claude Code session called `get_usage` and
+`search` through it. The live list had 34 tools, of which a session saw 23 once
+the 11 denied tools the server offered were removed; `generate` and
+`iterate_generation` were absent because the account had no AI entitlement, and
+four catalog-review tools (`submit_component`, `withdraw_component`,
+`resubmit_component`, `remove_component_from_catalog`) had appeared since the
+deny list was written from the documentation. They are denied now. A deny rule
+for a renamed tool silently stops matching, so compare the list with the tools
+`/mcp` shows. The shadcn command is shadcn's own; Motion's transport is inferred
+from its HTTPS endpoint.
 
 ---
 

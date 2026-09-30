@@ -77,8 +77,9 @@ products solved the same problem before choosing a direction:
 
 - Search Refero first. Add Mobbin only when Refero's coverage of that screen
   type is weak, when mobile-app patterns are central, or when a second set
-  would change the decision. With neither connected, skip this step; do not
-  work from memory of famous products.
+  would change the decision. With neither connected, skip this screen
+  search; do not work from memory of famous products. Component-level
+  research (21st, in `frontend-quality`) still runs when it is available.
 - Pick two or three references because they solved a similar problem (the
   same user job, a similar data shape, similar constraints), never because
   the company is famous.
@@ -89,6 +90,14 @@ products solved the same problem before choosing a direction:
 If the direction that comes out is a default card grid, a large empty hero,
 decorative metrics, gradient or glass surfaces, or AI purple, it came from
 defaults, not from the product or its references. Go back to the product.
+
+**Compose the page, do not stack it.** A page with several jobs gives each
+section the structure its job needs (scale, density, alignment, surface,
+imagery), and adjacent sections contrast. Hero, one repeated grid, footer, or a
+heading over identical items in every section, is the default arrangement, not
+a composition. Keep rounded cards for things that behave as objects (something
+opened, saved, or compared), pills for removable filter state, and let radius
+and surface change with hierarchy rather than repeat everywhere.
 
 ## 4. Write it down — only when it will be reused
 
