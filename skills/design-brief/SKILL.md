@@ -1,6 +1,6 @@
 ---
 name: design-brief
-description: Establish a product-specific visual direction before building UI. Use for a new frontend product, a substantial redesign, a visually important new surface, or a project with no established design system.
+description: Establish a product-specific visual direction before planning or building UI. Use for substantial frontend work (the list in frontend-quality's description) when frontend-quality's routes call for it, which always includes a new product or a project with no design system.
 ---
 
 # Design brief
@@ -28,10 +28,13 @@ what it already decided:
 - motion patterns;
 - copy voice.
 
-Then stop. Match it. Consistency beats novelty in an established product, and
-"improving" a product into a different design language is a defect unless it was
-explicitly requested. A partial or inconsistent system means extract what is
-real, and note only the specific gaps you must fill.
+Then stop. Match it. (A new screen or a component-system change gets step 3's
+research only when `frontend-quality`'s "Research" says research runs, and only
+for what that rule allows.) Consistency beats novelty in
+an established product, and "improving" a product into a different design
+language is a defect unless it was explicitly requested. A partial or
+inconsistent system means extract what is real, and note only the specific gaps
+you must fill.
 
 ## 2. For greenfield or redesign, establish the direction
 
@@ -60,12 +63,63 @@ day-traders should not converge.
 ## 3. Handling references
 
 When given screenshots, Figma files, URLs, or named references, extract
-**principles**, not pixels: hierarchy, density, grid, spacing rhythm, type roles,
-palette relationships, radius philosophy, border/shadow treatment, motion,
-content structure, image treatment.
+**principles**, not pixels: information hierarchy, composition, content density,
+what sits above the fold, navigation model, grid and spacing rhythm, type roles,
+interaction patterns, empty/loading/error handling, responsive behavior, palette
+relationships, radius philosophy, border/shadow treatment, motion, image
+treatment.
 
 Use them as calibration. Never clone a third party's site pixel-for-pixel unless
 the user owns that design and explicitly asks for reproduction.
+
+**Researching references.** For substantial frontend work (as
+`frontend-quality` defines it) whose structure is still open, and no references
+were given, study how shipped products solved the same problem before choosing a
+direction. In an established design system, `frontend-quality`'s "Research"
+decides whether this runs and what it may inform.
+
+- Search Refero first. Add Mobbin only when Refero's coverage of that screen
+  type is weak, when mobile-app patterns are central, or when a second set
+  would change the decision. With neither connected, skip this screen search
+  and do not work from memory of famous products. Component research
+  (21st.dev, in `frontend-quality`'s "Research") runs alongside and does not
+  wait on these.
+- Pick two or three references because they solved a similar problem (the
+  same user job, a similar data shape, similar constraints), never because
+  the company is famous.
+- Extract the principles above, each with the reason it fits this product.
+  Never average several unrelated products into a composite. In an
+  established design system, references inform only what `frontend-quality`'s
+  "Research" allows.
+
+**With no research tool connected** (no Refero, Mobbin or 21st.dev) and
+research due under `frontend-quality`'s "Research", do not skip this step, and
+do not fall back to defaults or to memory of famous products. Write an internal
+art direction instead, and state it before the plan or any code. It covers what
+that rule lets research inform. The items marked *style* apply only where that
+rule leaves style open; otherwise match the system's style.
+
+- **References from the subject's own world** (*style*): three to five
+  artifacts, documents or materials the product's users already know (for a
+  wine shop: a tasting note, a vintage chart, a cellar ledger), and what each
+  lends to type, layout, density or texture.
+- **Structure per section:** each section's job and the structure that job
+  needs, so that adjacent sections differ (see "Compose the page" below).
+- **Rejected defaults:** the default arrangements this direction will not use,
+  named.
+- **Signature element** (*style*): the one memorable move (step 4).
+
+If the direction that comes out is a default card grid, a large empty hero,
+decorative metrics, gradient or glass surfaces, or AI purple, it came from
+defaults, not from the product or its references. Go back to the product.
+
+**Compose the page, do not stack it.** A page with several jobs gives each
+section the structure its job needs (scale, density, alignment, surface,
+imagery), and adjacent sections contrast. Hero, one repeated grid, footer, or a
+heading over identical items in every section, is the default arrangement, not
+a composition. Keep rounded cards for things that behave as objects (something
+opened, saved, or compared), pills for removable filter state, and let radius
+and surface change with hierarchy rather than repeat everywhere.
 
 ## 4. Write it down — only when it will be reused
 

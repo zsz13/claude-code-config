@@ -8,13 +8,16 @@ paths:
 
 # Frontend
 
-- For UI work beyond a trivial fix, use the `frontend-quality` skill: it scales
-  the process to the change and requires a real browser render. Source code is not
-  visual evidence; a screenshot is.
+- For UI work beyond a small fix, use the `frontend-quality` skill: it picks the
+  route, decides when research and `design-brief` run (including in an
+  established design system), and requires a real browser render. Source code is
+  not visual evidence; a screenshot is.
 - Preserve an existing design system. Match its tokens, primitives, spacing, and
   interaction patterns; consistency outranks novelty in an established product.
-- Greenfield or redesign work establishes a product-specific direction first via
-  the `design-brief` skill, then `frontend-design`. There is no global house style.
+  `frontend-quality`'s "Research" says when a request opens any of that up.
+- There is no global house style. A product's direction comes from
+  `design-brief` and `frontend-design`, in the order `frontend-quality`'s routes
+  give.
 - Accessibility is part of done: semantic elements, labelled controls, keyboard
   operation, visible focus, contrast, and no status conveyed by color alone.
   Keep `eslint-plugin-jsx-a11y` (or the framework equivalent) enabled in

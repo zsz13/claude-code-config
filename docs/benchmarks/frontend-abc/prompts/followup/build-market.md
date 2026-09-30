@@ -1,0 +1,1 @@
+Build a frontend for a used car marketplace: a homepage with a hero, vehicle search, a listings grid with filters, and a vehicle detail view. Use Next.js with TypeScript and Tailwind in this directory, mock data only, no backend.
