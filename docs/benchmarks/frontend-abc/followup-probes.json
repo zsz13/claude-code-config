@@ -1,5 +1,5 @@
 {
-  "note": "Follow-up probes of 2026-09-30, counted from stream-json transcripts (subagents included) by summarize.py. Every run disallowed get_component and had record_inspiration_feedback denied. Round 2 ran the final shipped skill text and is the result that counts; round 1 ran an intermediate text and is kept as history. B runs stop at the 25-turn cap by design. writes counts Write/Edit only: r2-G1 changed its files through Bash. Round 1 E1 and E2 are confounded (fixture notes said no 21st; 21st also still pending at init).",
+  "note": "Follow-up probes of 2026-09-30, counted from stream-json transcripts (subagents included) by summarize.py. Every run disallowed get_component and had record_inspiration_feedback denied. Round 3 ran the final shipped skill text (a focused set); round 2 ran the text before round 3's fixes; round 1 ran an earlier intermediate text. B runs stop at the 25-turn cap by design. writes counts Write/Edit only: r2-G1 changed its files through Bash. Round 1 E1 and E2 are confounded (fixture notes said no 21st; 21st also still pending at init).",
   "round2": {
     "arms": {
       "A substantial planning": [
@@ -771,6 +771,143 @@
         "total_tool_calls": 3,
         "result": "success",
         "cost_usd": 0.36
+      }
+    ]
+  },
+  "round3": {
+    "note": "Final text after the four open issues were fixed. Stopped early by the owner after 11 completed runs; r3-CSb (cut off), B, F, EF-new and EF-style are not included.",
+    "runs": [
+      {
+        "run": "r3-E3a",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "frontend-design:frontend-design"
+        ],
+        "21st": {},
+        "total_tool_calls": 18,
+        "result": "success",
+        "cost_usd": 0.88
+      },
+      {
+        "run": "r3-E3b",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {},
+        "total_tool_calls": 14,
+        "result": "success",
+        "cost_usd": 0.66
+      },
+      {
+        "run": "r3-E3c",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {},
+        "total_tool_calls": 18,
+        "result": "success",
+        "cost_usd": 0.84
+      },
+      {
+        "run": "r3-E4a",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {
+          "search": 2
+        },
+        "total_tool_calls": 16,
+        "result": "success",
+        "cost_usd": 1.3
+      },
+      {
+        "run": "r3-E4b",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "search": 2,
+          "get_inspiration": 1
+        },
+        "total_tool_calls": 25,
+        "result": "success",
+        "cost_usd": 1.55
+      },
+      {
+        "run": "r3-CSa",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {},
+        "total_tool_calls": 18,
+        "result": "success",
+        "cost_usd": 1.58
+      },
+      {
+        "run": "r3-A1",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 3
+        },
+        "total_tool_calls": 8,
+        "result": "success",
+        "cost_usd": 0.54
+      },
+      {
+        "run": "r3-A2",
+        "21st_server": "connected",
+        "skills": [
+          "frontend-quality",
+          "design-brief"
+        ],
+        "21st": {
+          "get_inspiration": 1,
+          "search": 2
+        },
+        "total_tool_calls": 7,
+        "result": "success",
+        "cost_usd": 0.48
+      },
+      {
+        "run": "r3-C1",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "total_tool_calls": 6,
+        "result": "success",
+        "cost_usd": 0.29
+      },
+      {
+        "run": "r3-C2",
+        "21st_server": "connected",
+        "skills": [],
+        "21st": {},
+        "total_tool_calls": 7,
+        "result": "success",
+        "cost_usd": 0.28
+      },
+      {
+        "run": "r3-EFnone",
+        "21st_server": "absent",
+        "skills": [
+          "frontend-quality"
+        ],
+        "21st": {},
+        "total_tool_calls": 18,
+        "result": "success",
+        "cost_usd": 0.8
       }
     ]
   }

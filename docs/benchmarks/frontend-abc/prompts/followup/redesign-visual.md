@@ -1,0 +1,1 @@
+We want a new visual direction for this site: new typography, colour and overall look, keeping the same pages and features. Plan the new direction and how each page changes. Just the plan; don't change any files.

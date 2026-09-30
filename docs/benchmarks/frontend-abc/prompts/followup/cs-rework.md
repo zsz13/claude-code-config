@@ -1,0 +1,1 @@
+This site's component styles have drifted: buttons, badges and chips are styled in several places with slightly different values. Plan a cleanup that consolidates them into shared primitives and tokens without changing how the site looks. Just the plan; don't change any files.

@@ -1,6 +1,6 @@
 ---
 name: design-brief
-description: Establish a product-specific visual direction before planning or building UI. Use for substantial frontend work (the list in frontend-quality's description) whose structure, an interaction pattern or the visual direction is open, which is always the case in a project with no design system.
+description: Establish a product-specific visual direction before planning or building UI. Use for substantial frontend work (the list in frontend-quality's description) when frontend-quality's routes call for it, which always includes a new product or a project with no design system.
 ---
 
 # Design brief
@@ -28,9 +28,9 @@ what it already decided:
 - motion patterns;
 - copy voice.
 
-Then stop. Match it. (A new screen also gets step 3's research when
-`frontend-quality`'s "Research" says research runs in an established system, and
-only for what that rule allows.) Consistency beats novelty in
+Then stop. Match it. (A new screen or a component-system change gets step 3's
+research only when `frontend-quality`'s "Research" says research runs, and only
+for what that rule allows.) Consistency beats novelty in
 an established product, and "improving" a product into a different design
 language is a defect unless it was explicitly requested. A partial or
 inconsistent system means extract what is real, and note only the specific gaps
@@ -92,22 +92,22 @@ decides whether this runs and what it may inform.
   established design system, references inform only what `frontend-quality`'s
   "Research" allows.
 
-**With no research tool connected** (no Refero, Mobbin or 21st.dev), do not
-skip this step, and do not fall back to defaults or to memory of famous
-products. Write an internal art direction instead, and state it before the plan
-or any code. In an established design system, write only the structure per
-section and match the system's style: no new references for type or texture,
-and no new signature element.
+**With no research tool connected** (no Refero, Mobbin or 21st.dev) and
+research due under `frontend-quality`'s "Research", do not skip this step, and
+do not fall back to defaults or to memory of famous products. Write an internal
+art direction instead, and state it before the plan or any code. It covers what
+that rule lets research inform. The items marked *style* apply only where that
+rule leaves style open; otherwise match the system's style.
 
-- **References from the subject's own world:** three to five artifacts,
-  documents or materials the product's users already know (for a wine shop: a
-  tasting note, a vintage chart, a cellar ledger), and what each lends to type,
-  layout, density or texture.
+- **References from the subject's own world** (*style*): three to five
+  artifacts, documents or materials the product's users already know (for a
+  wine shop: a tasting note, a vintage chart, a cellar ledger), and what each
+  lends to type, layout, density or texture.
 - **Structure per section:** each section's job and the structure that job
   needs, so that adjacent sections differ (see "Compose the page" below).
 - **Rejected defaults:** the default arrangements this direction will not use,
   named.
-- **Signature element:** the one memorable move (step 4).
+- **Signature element** (*style*): the one memorable move (step 4).
 
 If the direction that comes out is a default card grid, a large empty hero,
 decorative metrics, gradient or glass surfaces, or AI purple, it came from

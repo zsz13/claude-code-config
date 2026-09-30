@@ -58,8 +58,8 @@ The small round "N" is the Next.js dev indicator.
 | [21st-call-log.md](21st-call-log.md) | The 21st build's log of all 40 calls |
 | [composition-protocol.md](composition-protocol.md) | The composition plan test's protocol, fixed before the runs, and its scored result |
 | [composition-plans.md](composition-plans.md) | The ten plans in full, each with the skills it invoked and its 21st calls |
-| [followup-protocol.md](followup-protocol.md) | The follow-up probes (planning, trivial work, established systems, no research tool): both rounds' protocols, the amendment, and both results |
-| [followup-probes.json](followup-probes.json) | Per-run counts for both follow-up rounds; round 2 ran the final skill text |
+| [followup-protocol.md](followup-protocol.md) | The follow-up probes (planning, trivial work, established systems, no research tool): all three rounds' protocols, the amendment, and their results |
+| [followup-probes.json](followup-probes.json) | Per-run counts for all three follow-up rounds; round 3 ran the final skill text |
 | [followup-fallback-plans.md](followup-fallback-plans.md) | The six round-2 replies from runs with no research tool, which the fallback scoring rests on |
 | [prompts/](prompts/) | The three build prompts and the composition-plan prompt; `followup/` holds the follow-up probe prompts |
 | [CREDITS.md](CREDITS.md) | Photo authors and licences |

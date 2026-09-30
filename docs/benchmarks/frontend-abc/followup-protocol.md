@@ -107,12 +107,59 @@ Added after the runs. Every run in an arm that needs 21st started with it
 | F. No research tool, greenfield | 4/4 | All four elements in every reply, with references from each product's own world; none from the skill's example |
 | EF. No research tool, established system | 2/2 | Structure only, styling from the site, no signature element |
 
+## Round 3, fixed before its runs
+
+The owner asked for the four open issues to be fixed. The changes:
+- **Research** is now the only statement of when research runs, what it may
+  inform, and what the no-tool fallback covers.
+- **`rules/frontend.md`** points to the route instead of restating it.
+- **Component systems** have their own route, and it takes precedence.
+- **Scope** is judged from the request and the product's existing requirements,
+  never from features added while planning.
+
+Round 3 is a focused regression on the final text. Its transcripts are
+`logs/r3-*.jsonl`. It uses the same fixtures, the same batch limit and the same
+exclusion rule as round 2. Where a case repeats, the extra runs are in the
+cases where nondeterminism matters.
+
+| Case | Runs | Where | Prompt | Pass when |
+|---|---|---|---|---|
+| E3. Established system, saved-cars page (failed in round 2) | 3 | control build without NOTES.md | `est-saved-open.md` | zero `mcp__21st__*` calls |
+| E4. Established system, comparison view | 2 | same | `est-compare-open.md` | at least one `get_inspiration` or `search` call |
+| CS. Component-system cleanup in an established system | 2 | same | `cs-rework.md` | zero `mcp__21st__*` calls, and the plan keeps the site's look (no new visual direction) |
+| A. Substantial planning | 2 | empty dir | `plan-market.md`, `plan-vet.md` | a skill invoked, and at least one `get_inspiration` or `search` call |
+| B. Substantial build | 1 | empty dir | `build-market.md` | a `get_inspiration` or `search` call before the first Write |
+| C. Trivial fix | 2 | probe app | `fix-font.md`, `fix-copy.md` | zero `mcp__21st__*` calls |
+| F. No research tool, new product | 2 | empty dir, no MCP servers | `plan-market.md`, `plan-vet.md` | `design-brief` invoked; an internal art direction with all four elements; none from the skill's example |
+| EF-new. No tool, established system, new interaction pattern | 1 | control build without NOTES.md, no MCP servers | `est-compare-open.md` | structure and behavior stated; no *style* items (no new type or texture references, no signature element) |
+| EF-style. No tool, established system, new visual direction requested | 1 | same | `redesign-visual.md` | the art direction includes the *style* items: references from the product's world and a signature element |
+| EF-none. No tool, established system, no research due | 1 | same | `est-saved-open.md` | no internal art direction and no *style* items; the plan matches the system |
+
+The plan-only cases disallow Write, Edit and NotebookEdit. Every run disallows
+`mcp__21st__get_component`. F and EF are scored by one person (the one who made
+the change) from the reply text.
+
+## Round 3 result
+
+Added after the runs. The owner stopped round 3 early, after 11 completed runs,
+because the practical questions were answered. CSb was cut off and is not
+counted. B, F, EF-new and EF-style never started.
+
+| Case | Passed | What happened |
+|---|---|---|
+| E3. Saved-cars page | 3/3 | No 21st call; each run planned the page from the site's existing parts (round 2: 0/2) |
+| E4. Comparison view | 2/2 | Searched 21st (two or three calls) |
+| CS. Component-system cleanup | 1/1 | No 21st call; the plan states no visual change |
+| A. Substantial planning | 2/2 | Both skills loaded; `get_inspiration` plus two or three `search` calls |
+| C. Trivial fix | 2/2 | No 21st call, and no skill loaded |
+| EF-none. No tool, established, no research due | 1/1 | Planned from the existing system; no art direction and no style items |
+
 ## Where the published files are
 
 The prompts are in [prompts/followup/](prompts/followup/). The exception is
 `plan-market.md`, which is the same text as
 [prompts/composition-plan.md](prompts/composition-plan.md). Per-run counts for
-both rounds are in [followup-probes.json](followup-probes.json). The scored
+all three rounds are in [followup-probes.json](followup-probes.json). The scored
 fallback replies (round 2's F and EF) are in
 [followup-fallback-plans.md](followup-fallback-plans.md). "Fixed before the runs"
 is the author's own statement; nothing timestamps it independently.

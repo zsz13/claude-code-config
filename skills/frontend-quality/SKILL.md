@@ -32,15 +32,23 @@ it plans, up to the plan: research and direction come first, because the plan is
 where the structure gets decided. A question about existing code, or a plan for
 a small fix, takes the small-fix route.
 
+Decide the route, and whether research runs, from what the user asked for and
+from requirements the product already has (its brief, design system, specs),
+before planning. A feature, page or interaction pattern you think of adding
+while planning changes neither: offer it as optional, without research, and
+research it only if the user takes it up.
+
 **Substantial frontend work** is defined here once: a new frontend or product; a
 landing or multi-section marketing page; a dashboard; an ecommerce, catalog or
 listing page; a new screen; a major redesign; building or restructuring a
 component system; or a significant UX restructuring. This skill's description
 repeats the list because the description decides whether the skill loads; change
 the two together. Every other rule here, in `design-brief` and in
-`rules/frontend.md` refers to this definition. Work inside an existing product
-takes "New screen or major redesign"; a new product, a landing page or a
-component system takes the last route.
+`rules/frontend.md` refers to this definition. Work on a component system itself,
+new or reworked, takes "Component system", which wins when a request matches
+more than one route; a screen built with the system still takes the screen
+route. Other work inside an existing product takes "New screen or major
+redesign"; a new product or a landing page takes "New product or landing page".
 
 **Small UI fix** (spacing or alignment, a color or other token, a copy string,
 one broken style, a small bug fix)
@@ -49,8 +57,9 @@ affected viewport. **Do not redesign.** Do not run the review stages or
 research.
 
 **New component**
-→ find the existing design system and its tokens → build from existing primitives
-→ render → check states and both primary viewports.
+→ find the existing design system and its tokens → research only if "Research"
+allows it → build from existing primitives → render → check states and both
+primary viewports.
 
 **New screen or major redesign**
 → `design-brief` if no design system exists, or if "Research" says research runs
@@ -60,31 +69,50 @@ research.
 → screenshots at ~375px and ~1280px → `visual-design-judge`
 → UX and accessibility pass → fix what matters → **render again**.
 
-**New product, landing page or component system**
+**New product or landing page**
 → `design-brief`
-→ establish real content first (for a component system, the screens it serves)
+→ establish real content first
 → research (see "Research"), unless references were given
 → product-specific direction
 → define tokens → `frontend-design` → build → browser iteration
 → `visual-design-judge` → UX and accessibility pass → final responsive check.
+
+**Component system** (a new one, or a cleanup or rework of an existing one)
+→ inventory the existing tokens and primitives and where each is used
+→ `design-brief` for the system's direction when the product has no visual
+  language yet, or when the request asks to change it; otherwise keep the
+  existing visual language
+→ research (see "Research"): only for components whose behavior is the hard part
+→ define or consolidate tokens and primitives → migrate the call sites
+→ render the screens that use them at both primary viewports, before and after;
+  a visual change the request did not ask for is a defect
+→ `visual-design-judge` when the look was meant to change → accessibility pass.
 
 Scale the process to the change. Running a five-stage review on a padding fix
 wastes context and buries real findings.
 
 ## Research
 
-Study how others solved the hard parts before a plan is final.
+Study how others solved the hard parts before a plan is final. This section is
+the one statement of when research runs, what it may inform, and what replaces
+it when no tool is connected; `design-brief` and `rules/frontend.md` refer here.
+Eligibility comes from the request and the product's existing requirements,
+never from what you might add while planning (see "Route by scope").
 
-- **Substantial frontend work:** research is a step, not an option, with one
-  exception. In a product with an established design system it runs only when
-  the page's structure, an interaction pattern, or the visual direction is
-  genuinely open or new; a screen built from the system's existing patterns
-  matches the system and gets no outside research. When it does run there, it
-  informs structure and behavior, and style only when the visual direction
-  itself is what is open. This is the one statement of that rule; `design-brief`
-  refers to it.
-- **New component outside that work:** only when its behavior is the hard part
-  (a command palette, a data table, a dialog).
+- **Substantial frontend work, no established design system:** research is a
+  step, not an option. It may inform structure, behavior and style.
+- **Substantial frontend work in an established design system:** research runs
+  only when the request itself introduces a page structure, an interaction
+  pattern, or a visual direction the product does not have. A page that shows a
+  subset or another view of what the product already shows (a saved list, a
+  filtered list, an account page built from existing parts) introduces none.
+  When research runs here, it informs the new structure and behavior, and style
+  only when the request asks for a new visual direction.
+- **Component system:** only for components whose behavior is the hard part;
+  never `get_inspiration`. Its look comes from `design-brief` when it has none
+  yet, and changes only when the request asks for a new one.
+- **New component:** only when its behavior is the hard part (a command
+  palette, a data table, a dialog).
 - **Small UI fix, or a question about existing code:** never.
 
 Use every source that is connected; none waits on another:
@@ -93,15 +121,17 @@ Use every source that is connected; none waits on another:
 - **Components (21st.dev):** when `mcp__21st__*` tools are listed (they are
   deferred: load them with ToolSearch, e.g.
   `select:mcp__21st__get_inspiration,mcp__21st__search`), run `get_inspiration`
-  once for the product (not for a component system) and `search` for the two to
-  four sections or components whose composition or behavior is the hard part
-  (hero, gallery, filtering, navigation, detail view, data table). Compare
-  several results and keep only what fits the direction. "Component libraries"
-  says what may be taken from them.
-- **None connected:** do not skip the phase and do not fall back to defaults.
-  For substantial work, write `design-brief`'s internal art direction (step 3)
-  and state it before the plan. For a new component, build from the system's
-  primitives and say that no research tool was available.
+  once for the product (substantial work only) and `search` for the two to four
+  sections or components whose composition or behavior is the hard part (hero,
+  gallery, filtering, navigation, detail view, data table). Compare several
+  results and keep only what fits the direction. "Component libraries" says what
+  may be taken from them.
+- **None connected:** when research would have run, do not skip it and do not
+  fall back to defaults. Write `design-brief`'s internal art direction (step 3)
+  and state it before the plan. It covers exactly what research could have
+  informed above: structure and behavior always, style only where style is open.
+  When research would not have run, there is nothing to replace; match the
+  system.
 
 ## Render it
 
