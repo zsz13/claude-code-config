@@ -15,9 +15,14 @@ paths:
 - Preserve an existing design system. Match its tokens, primitives, spacing, and
   interaction patterns; consistency outranks novelty in an established product.
   `frontend-quality`'s "Research" says when a request opens any of that up.
-- There is no global house style. A product's direction comes from
-  `design-brief` and `frontend-design`, in the order `frontend-quality`'s routes
-  give.
+- There is no global house style, only a default register. A product's
+  direction comes from `design-brief` and `frontend-design`, in the order
+  `frontend-quality`'s routes give. Where substantial work leaves the visual
+  register open, the owner's default taste is expressive but controlled
+  (`design-brief` step 2); a small fix never changes the register. Where
+  `frontend-quality`'s "Direction gate" applies, production UI code waits for
+  that gate. Wherever the pre-build check runs (same section), no product UI
+  file is written before this task's `.design/prebuild.md` exists.
 - Accessibility is part of done: semantic elements, labelled controls, keyboard
   operation, visible focus, contrast, and no status conveyed by color alone.
   Keep `eslint-plugin-jsx-a11y` (or the framework equivalent) enabled in

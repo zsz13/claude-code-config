@@ -61,6 +61,14 @@ The small round "N" is the Next.js dev indicator.
 | [followup-protocol.md](followup-protocol.md) | The follow-up probes (planning, trivial work, established systems, no research tool): all three rounds' protocols, the amendment, and their results |
 | [followup-probes.json](followup-probes.json) | Per-run counts for all three follow-up rounds; round 3 ran the final skill text |
 | [followup-fallback-plans.md](followup-fallback-plans.md) | The six round-2 replies from runs with no research tool, which the fallback scoring rests on |
+| [visual-energy-probe.md](visual-energy-probe.md) | The visual-energy and reference-led probe: fixture, harness, criteria, prompts and result |
+| [visual-energy-probes.json](visual-energy-probes.json) | Per-run data for that probe, with every redesign reply in full |
+| [reference-fidelity-probe.md](reference-fidelity-probe.md) | One redesign followed end to end with 21st connected: research, three directions, the choice, `get_component`, the build and a reference-aware judge. Its three renders are `boards/refprobe-*.jpg` (the Seedkeep fixture, not the car-site builds above) |
+| [reference-fidelity-probe.json](reference-fidelity-probe.json) | Per-run data for that probe: tool sequences, every 21st call and result, both replies, both judge packets and reports |
+| [gate-hardening-probes.md](gate-hardening-probes.md) | Probes of the two changes that followed: the pre-build check written to `.design/prebuild.md` before any product UI file, and motion inspection for motion-led references. Its motion frames are `boards/gate-hardening-motion-frames.jpg` (Seedkeep build only) |
+| [gate-hardening-probes.json](gate-hardening-probes.json) | Per-run data for those probes: timestamped tool logs, 21st calls, replies, each `prebuild.md`, the build's judge packet and report, and the motion check |
+| [default-taste-probe.md](default-taste-probe.md) | The default-taste probe: redesign proposals on the text before and after the owner's default register was written in, scored from the replies and by a blind scorer, plus small fixes and a calm request |
+| [default-taste-probe.json](default-taste-probe.json) | Per-run data for that probe: tool sequences, 21st calls, every reply in full, the scorer's packets and scores, and the label key |
 | [prompts/](prompts/) | The three build prompts and the composition-plan prompt; `followup/` holds the follow-up probe prompts |
 | [CREDITS.md](CREDITS.md) | Photo authors and licences |
 
