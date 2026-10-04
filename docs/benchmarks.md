@@ -636,6 +636,302 @@ build per condition.
 - **Research earned by added scope.** Eligibility now comes from the request and
   the product's existing requirements. The saved-cars page went from 0/2 to 3/3.
 
+### Direction gate probes (2026-10-01)
+
+**Class: Observed**, one or two runs per cell. They test whether `frontend-quality`'s
+direction gate fires, not whether it improves a page.
+
+Runs were headless `claude -p` on Claude Code 2.1.286 with `--setting-sources
+project,local` and `--strict-mcp-config`. The fixture was a three-file React
+lending tracker with the repository's skills, rules and agents in its project
+`.claude/`, so no user-level skill, plugin, hook or MCP server loaded. Edits
+were allowed (`acceptEdits`). Two cells used the new text. A baseline cell used
+the four files as they stood before the gate.
+
+| Cell | Prompt | Skills loaded | File writes attempted | Ended with three directions and a question |
+|---|---|---|---|---|
+| Trivial fix, new text | footer font size; one button label | none | 1 per run | 0/2, correctly |
+| Redesign, new text | "Completely rethink … while preserving its existing functionality"; "a major redesign … Go ahead and build it" | `frontend-quality`, `design-brief` | 0 | 2/2 |
+| Same redesigns, baseline text | as above | `frontend-quality`, `design-brief` | 1 per run (`src/App.jsx`) | 0/2: each picked a direction itself |
+
+The fixture sat under the job's directory in `~/.claude/`, and the harness
+refuses writes there. So every attempted write in this table was blocked. That
+does not decide the result: the new-text redesign runs made no write attempt at
+all, and both said they were stopping for the choice. No research server was
+connected, so both used the fallback, the subject's-world artifacts. The
+trivial runs loaded no skill, so they show the gate stays out of a small fix's
+context, not that its exclusion text works.
+
+A blind review then changed the text. The pre-build check now runs only where
+the work sets a new direction, the component-system route came under the gate,
+and the headless case was stated. Round 2 reran the same four prompts on the revised text, plus one
+new screen in an established system: a `DESIGN-BRIEF.md` naming a "lending
+ledger" direction, and matching tokens in `App.css`.
+
+| Round 2 cell | Skills loaded | File writes attempted | Three directions and a question |
+|---|---|---|---|
+| Trivial fixes (2) | none | 1 per run | 0/2, correctly |
+| Redesigns (2) | `frontend-quality` (both), `design-brief` (one) | 0 | 2/2 |
+| New page in the established system ("Add a Borrowers page …") | `frontend-quality` | `src/App.jsx` and `src/App.css`, in the brief's ledger style | 0/1, correctly |
+
+Two edits came after round 2, both on paths no probe exercises. The
+component-system route gained its own gate step, and the pre-build check now
+also runs when the request itself names a new direction. Not exercised in either round: a
+choose-it-yourself instruction, a new component, a component-system change, a
+plan request, connected research servers, and any full build through the
+pre-build check.
+
+### Visual energy and reference-led probes (2026-10-01)
+
+**Class: Observed**, two to four runs per cell. They test whether `design-brief`
+step 4's scores and its reference-led direction show up in the proposal, whether
+a plan made after the choice runs the visual-energy check, and that the gate and
+small fixes are otherwise unchanged. They do not test whether a page built from
+them is richer. The fixture, harness, criteria and prompts are in the
+[protocol](benchmarks/frontend-abc/visual-energy-probe.md), and per-run data
+with every reply is in
+[visual-energy-probes.json](benchmarks/frontend-abc/visual-energy-probes.json).
+
+Same fixture, flags and prompts as the direction gate probes above, with two
+differences. Each run got a fresh copy of the fixture as a git repository in a
+writable temporary directory, so any write would show in `git status`. And
+`mcp__21st__get_component` was disallowed. No research server was connected:
+user-scope servers do not load under `--setting-sources project,local`, and
+connecting 21st another way would have meant copying its key into a config
+file, which was not done. Every reference-led direction below is therefore the
+no-tool form, built on subject's-world artifacts.
+
+The text changed four times between cells. *Baseline* is the gate text before
+this change. *Text 1* adds the scores and the reference-led direction. *Text 2*
+adds an Adapts field for the six aspects. *Text 3* states the score line and
+the Adapts entries as literal formats and caps the reference-led direction at
+two references. *Final*, the published text, adds the fixes from a blind
+review of text 3. Each redesign cell ran both redesign prompts equally.
+
+| Cell | Runs | All four scores on all three directions | No two at one energy level | A reference-led direction (one or two references, fidelity high) | All six aspects in its adaptation list | Product files changed |
+|---|---|---|---|---|---|---|
+| Redesign, baseline | 4 | 0/4 | no scores to compare | 0/4 | 0/4 | none |
+| Redesign, text 1 | 4 | 4/4 | 4/4 (energies 2-3-4, 1-3-4, 1-2-3, 2-3-4) | 4/4 | 0/4: three or four of the six | none |
+| Redesign, text 2 | 2 | 0/2: fidelity missing in one, in words in the other | 2/2 | 1/2: the other had three sources | 1/2 | none |
+| Redesign, text 3 | 4 | 4/4 | 4/4 (2-1-3, 1-3-4, 1-3-4, 2-3-4) | 4/4 | 4/4 | none |
+| Redesign, final | 4 | 3/4: one left fidelity off its two other directions | 4/4 (1-2-3, 1-3-4, 1-3-2, 1-2-3) | 4/4 | 4/4 | none |
+| Trivial fixes, text 1, text 3 and final | 6 | n/a | n/a | n/a | n/a | the one line asked for, no skill loaded |
+
+Two cells on the final text go past the proposal or outside the gate:
+
+| Cell | Runs | Result |
+|---|---|---|
+| After the choice: the two final-text proposals in the [protocol's](benchmarks/frontend-abc/visual-energy-probe.md) P cell, each resumed twice as forks, once choosing the reference-led direction and once the most restrained | 4 plans | 4/4. Every plan answered pre-build questions 1 to 5 and the visual-energy questions 6 to 11. Both reference-led plans restated the adapted aspects as rules. Both restrained plans kept their energy, one in the words "that's the restraint you chose, not a defect to fix". No file was written. In one of the two proposals the reference-led direction was also the most restrained, so its two forks chose the same direction. |
+| Established system: a new page in a product whose `DESIGN-BRIEF.md` names its direction | 2 | 2/2. Neither proposed directions or scores. Both built the page from the brief's tokens: ruled rows, a serif for names, monospace counts, no cards. |
+
+Every redesign proposal, 18 of 18, baseline included, stopped with three
+directions and a question, and wrote nothing. The baseline's directions already
+differed in metaphor: a ledger, seed packets and a season timeline in all four.
+None was scored, and none was built around particular references; each drew on
+one shared pool of artifacts. Two of the four recommended the ledger, the most
+restrained. On the new texts, two proposals in fourteen recommended a
+direction, both times the most restrained. Text 2's mixed result is why text 3
+uses literal formats, and the final text's 3/4 shows the score line is still
+not fully binding.
+
+Three sentences came after every run, from a second blind review, all in the
+step after the choice. A restrained choice lowers the energy a plan must reach,
+never its fidelity to the references it adapts. Each part of a mix keeps its
+own direction's scores. And a reference the user gives gets a saved preview for
+the final review. The P cell ran before them. On its paper references, the one
+plan that was both reference-led and restrained kept every adapted aspect
+anyway, so it could not have shown the first sentence's effect.
+
+Not shown, and worth knowing:
+- Without a research server, no preview reached the user, no 21st reference
+  was offered, and nothing exercised `get_component` after a choice.
+- No run built anything after the choice, so the judge's reference-fidelity
+  check never ran. The plans answered the visual-energy questions, but none was
+  flat enough to show whether the check catches a flat plan.
+- In every text 3 and final proposal, the reference-led direction was the most
+  or second-most restrained. Led by the library's own paperwork, it became a
+  ledger or a card drawer. Whether a shipped-product reference moves it is
+  untested.
+- Most directions in every run, baseline and new, drew on one print register
+  (paper, kraft, ink). The season timelines leaned on botanical greens and soil
+  tones, and several replies named no palette. Whether that counts as one
+  surface treatment under three metaphors was not scored. Either way, the
+  rule moved no direction out of that register. Their structures did differ:
+  a table, packet objects, a timeline.
+- The energy levels are the model's own ratings. "No two at one level" was
+  scored from the ratings, not from a judgement of the directions.
+- Criteria 3 and 4 check form: a fidelity label, a reference count, six named
+  entries. They do not check that the adaptation is good, and a "not taken"
+  entry counts. The fixed formats were written after text 1 failed criterion
+  4, and tested on the same fixture and prompts, so the text 3 and final
+  results are in-sample.
+- Neither a domain whose default is a dark technical dashboard nor a user whose
+  taste points to visually rich work was probed.
+- Several runs read `design-brief` with Read or a shell `cat` rather than the
+  Skill tool. The JSON records the tool sequence of every run; every redesign
+  run read it, and no trivial run did.
+- Scored by one person (the one who made the change) from the reply text.
+
+### Reference fidelity probe, end to end (2026-10-01)
+
+**Class: Observed**, one run. It follows one redesign through the whole gate,
+with 21st connected, to see whether a reference-led direction loses its
+reference's qualities during the build. The fixture, harness, record and
+limits are in the [protocol](benchmarks/frontend-abc/reference-fidelity-probe.md),
+and per-run data is in
+[reference-fidelity-probe.json](benchmarks/frontend-abc/reference-fidelity-probe.json).
+
+Same fixture and isolation as the probes above, with two differences. 21st
+was connected through `--mcp-config`, with its key passed through the
+environment and never written to a file. A scan found it in no log. And
+`get_component` was allowed. The user's prompt asked for visually rich work.
+
+| Step | Result |
+|---|---|
+| Research | 1 `get_inspiration`, 3 `search`; 7 of 34 preview images opened, none of their videos |
+| Three directions | Energies 3, 2, 4; each reference a 21st link; compositions differ, two share a print register |
+| Reference-led direction | A, Energy 3, fidelity high, two references, six Adapts entries. Second-most restrained of the three, as in the earlier probes, but expressive and built on two shipped components rather than the library's paperwork |
+| Pre-build check after the choice | **Not visible**: announced, then four files written with no plan or answers in the transcript |
+| `get_component` | Once, for the composition reference (Layered Stack), ported without GSAP, Tailwind or any new dependency; not for the interaction reference |
+| Build's own review | Ran, with static previews only. Its top finding misdescribed the reference's piled state; the fix moved the composition further from it |
+| Final judge, with video frames beside the renders | Composition partly survived; motion survived at 1280, partly at 375; hierarchy partly; richness survived; generic defaults mostly avoided |
+
+Two of the judge's limits showed. It listed search as not triggering the grid
+and marked that unverified, because its definition rules out typing; a
+scripted check showed search does trigger it. And it missed a motion gap that
+the frames show and the build's own reply admitted: the remaining packets snap
+into place after a return. What was preserved and what was lost is listed in
+the protocol.
+
+This covers three gaps listed above, once each: 21st references reached the
+user (as links to their preview pages, not as images), `get_component` ran
+after a choice, and the judge's reference-fidelity
+check ran on a built page. It does not compare `get_component` with
+rebuilding from the preview, and the session that orchestrated it knew the
+failure mode it was testing. The two text changes that followed from it are
+probed in the next subsection.
+
+### Pre-build gate and motion fidelity probes (2026-10-01)
+
+**Class: Observed**, one run per cell. The reference fidelity probe led to two
+text changes. First, `design-brief` step 5 now writes the pre-build check to
+`.design/prebuild.md`, and no product UI file may be written before that file
+exists. Second, a motion-led reference must be inspected through its video,
+its live demo or its source. Its behavior gets a note in the plan, each
+adapted aspect is tracked as preserved, intentionally changed or lost, and the
+judge reports motion at desktop and at mobile. The fixture, harness, record
+and limits are in the [protocol](benchmarks/frontend-abc/gate-hardening-probes.md),
+and per-run data is in
+[gate-hardening-probes.json](benchmarks/frontend-abc/gate-hardening-probes.json).
+
+The harness, fixture and 21st connection are those of the reference fidelity
+probe. One addition is a hook that logs every tool call with a millisecond
+timestamp, so that the order of writes is read from the log, not from the
+reply. The other is the fixture's missing `vite.config.js`, now committed in
+the baseline.
+
+| Check | Runs | Result |
+|---|---|---|
+| A major redesign writes `.design/prebuild.md` before its first product UI write | 3: user-chosen (stopped after its first product write), autonomous (stopped likewise), and probe 2's full build | 3/3, 20 s, 48 s and 81 s ahead of the first product write; file birth times agree. One of the three kept strictly to the four required items |
+| A small fix does not create it | 2 (footer size, button label) | 2/2: one-line change, no `.design/`, no skill loaded |
+| A selected motion-led 21st reference is inspected in motion before the first product write | 1 (Motion Card Stack and Layered Stack) | yes: both preview videos as `ffmpeg` frame sheets, and Motion Card Stack's source via `get_component` |
+| The plan has a behavior note for it (trigger, motion, timing, mobile, reduced motion) | 1 | yes, both references, all five fields. The one from source matches it; the one from video frames reverses which state hover produces |
+| The final review reports preserved, intentionally changed and lost, with motion at desktop and mobile | 1 | the build's judge did, per aspect and per viewport. It found two motion losses at 1280 (a swiped card fades instead of tucking behind; the deck-to-grid morph too fast to see), and called the 375 swipe faithful. The final reply to the user listed what was kept and changed, but gave no reasons and no lost entry |
+
+The build fixed both motion losses and did not rerun its judge. A recording of
+the final build by the orchestrating session shows the fixed behavior at 1280
+and 375 ([frames](benchmarks/frontend-abc/boards/gate-hardening-motion-frames.jpg)).
+The swiped card now tucks behind the stack, on the order of 100 ms, and the
+morph is visible over roughly 200 ms. The build's own note puts the
+reference's transition at about 0.5 s.
+
+Inspecting the video did not stop the Layered Stack note from reversing its
+trigger: the frames show both states, but not which one hover produces. The
+day's one free source retrieval had gone to the other reference.
+
+Not shown: whether the file shaped the plan or only records it; a stale file
+from an earlier direction; the fallback when a motion reference cannot be
+inspected; reduced motion rendered; and any run without the new text on the
+same references. The reference fidelity probe used the same two components
+with static previews, but its direction and plan differ in more than this
+change. Every redesign cell had one run, on the fixture and prompts of the
+earlier probes, and the session that changed the text also scored it.
+
+### Default taste probe (2026-10-03)
+
+**Class: Observed**, three runs per text, proposals only. The owner's default
+taste is now in `design-brief` step 2, as the default register: expressive but
+controlled wherever the request leaves it open. Under it:
+- step 4 puts the three directions at energies 2, 3 and 4, in different
+  registers;
+- the reference-led direction sits at 3 or 4, on references chosen for visual
+  quality as well as fit;
+- step 5's questions, the gate and the motion section follow it, and
+  `visual-design-judge` gains an energy check for an expressive or
+  reference-led direction.
+
+The fixture, harness, criteria, per-run results and limits are in the
+[protocol](benchmarks/frontend-abc/default-taste-probe.md). Per-run data,
+with every reply and both scoring rounds, is in
+[default-taste-probe.json](benchmarks/frontend-abc/default-taste-probe.json).
+
+The probe used the same fixture, 21st connection and isolation as the probes
+above, and the same two redesign prompts, neither of which states a taste.
+There were four texts:
+- *base*, before the change;
+- *text 1*;
+- *text 2*, after a blind review of text 1 (nine findings accepted, one
+  raised by both reviewers) and a register slot;
+- *final*, after the first scoring round, adding two sentences: a table or
+  ledger main unit is Energy 1, and two paper-and-ink directions share a
+  register.
+
+A fresh blind scorer session in each round rated the redesign proposals, with
+the score lines removed and the cited components' preview images beside the
+text (one text 1 packet lacked four of its six).
+
+| Text | C2 by the reply's own scores: no 1, two at 3+ | Scorer: directions at 3+ | Scorer: proposals with two at 3+ | Scorer: muted directions | Scorer: a reference-led, ambitious direction | Scorer: register differs |
+|---|---|---|---|---|---|---|
+| Base | 1/3 | 1/9 | 0/3 | 5/9 | 0/3 | 0/3, 3 partly |
+| Text 1 | 3/3 | 5/9 | 2/3 | 3/9 | 3/3 | 0/3, 3 partly |
+| Text 2 | 3/3 | 5/9 | 2/3 | 4/9 | 3/3 | 1/3, 2 partly |
+| Final | 3/3 | 5/9 | 2/3 | 2/9 | 3/3 | 2/3, 1 partly |
+
+Every redesign proposal on every text stopped with three directions and wrote
+no product file. In two of three base proposals, the reference-led direction
+was an Energy 1 ledger built on data-table components. On the new texts, no
+reference-led direction was built on a table; all were led by stack, card
+or ticket components.
+
+The two scorer sessions gave the three base proposals the same scores. The
+scorers rated lower than the replies: every Energy 4 on the new texts came
+out at 3.
+
+Two small fixes made exactly the one-line change and loaded no skill. A
+request for calm, minimal, utility-first design came back at 1, 2 and 3 on
+both texts it ran on, and the final reply said why Energy 1 was allowed.
+
+Against the criteria written while the text 2 runs ran, the final text fell
+short in places.
+- Two of its three proposals had two directions the scorer rated 3 or 4.
+- One had no muted direction; the other two each had one, their Energy 2
+  direction.
+- Composition differed fully in two of three; the third had two
+  layered-packet directions.
+
+Register, reported separately, differed fully in two of three. Seedkeep's own world
+pulls toward paper and ink, and every text kept at least one paper-and-ink
+direction.
+
+Not shown:
+- **Nothing was built**, so the motion default, the sharper pre-build
+  questions, the closer adaptation and the judge's new verdicts are untested.
+- **Untested exceptions.** None but the explicit calm request was probed.
+- **Who scored.** Energy is a model's judgement, by the reply itself and by
+  one scorer sharing its training. No person scored.
+- **In-sample.** The final sentences answer the first scoring round on the
+  same prompts, and one session made the change, the criteria and the record.
+
 ---
 
 ## 9. Claims made with no measurement at all
@@ -656,7 +952,20 @@ Stated plainly so they are not mistaken for results:
 | Component research adapts rather than pastes | **Rationale**. One self-reported instance (§8): the 21st build's log says it restyled both retrieved components and removed behaviors that did not fit. The component source is not published, the build was told to use 21st heavily, and the re-grade it kept from the retrieved hero was the judge's weakest decision. |
 | Requiring component research for substantial frontend work | **Rationale**. It is the owner's stated policy. It was tested once (§8) and did not come out ahead; what the step fixes is that research never ran at all. |
 | Researching two or three shipped products that solved the same problem (Refero first, Mobbin only when useful, never averaged) gives a screen more product-specific structure than designing without them | **Rationale**. It is the owner's stated policy. No reference server was authenticated or measured. |
-| Naming the defaults a direction can fall back to (a default card grid, empty hero, decorative metrics, gradient or glass, AI purple) as a check at the end of the reference step catches that fallback before building | **Hypothesis**. Untested. |
+| Naming the defaults a direction can fall back to (a header over a centered container, white cards on gray, repeated grids, an empty hero, decorative metrics, a passive sidebar, gradient or glass, AI purple, and others) in a pre-build check on the plan catches that fallback before building | **Hypothesis**. Untested. The list moved from the end of `design-brief`'s reference step into its step 5. |
+| Stopping for the user's choice among three researched directions before code gives a more product-specific page than a direction chosen silently | **Rationale**. It is the owner's stated policy. Whether the gate fires, and only where it should, is a separate and narrower question, probed in §8 (redesigns stopped 4/4 over two rounds, and 18/18 in the visual-energy probes; trivial fixes never loaded it; one new page in an established system was built without it). Two full builds have gone through it (§8, reference fidelity probe and gate probes), with no silently chosen direction to compare. |
+| With the main AI-slop check before code, the rendered check finds drift rather than discovering the direction | **Hypothesis**. Untested. |
+| Scoring the three directions for visual energy, density, motion and reference fidelity, with no two at one energy level, gives the user a real choice of expressiveness and keeps the build from settling back into restrained defaults | **Rationale**. It is the owner's stated policy. §8 shows the scores and the spread appear (spread 4/4, every score present 3/4 on the final text); nothing shows that a page built from them is richer. Since the default register, they sit at 2, 3 and 4 unless the request or product says otherwise; a blind scorer rated 5 of 9 final directions at 3 or 4, against 1 of 9 on the text before (§8, default taste probe). |
+| Where the request leaves the visual register open, defaulting to the owner's taste (expressive but controlled) gives the user stronger directions to choose from, without overriding a request for calm | **Observed**, proposals only (§8, default taste probe): three runs per text and a blind scorer session per round. On the final text, no direction was scored 1, every proposal had an ambitious reference-led direction, and muted directions fell from 5 of 9 to 2 of 9. Two directions at 3 or 4 held in two of three proposals. A calm request came back at 1, 2 and 3. No page was built from these proposals, and only the explicit calm request among the exceptions was tried. |
+| `visual-design-judge`'s energy check for an expressive or reference-led direction, with its four named verdicts ("technically correct but visually too bland" and the others), catches a build that went bland | **Hypothesis**. Untested: no build ran after the change. |
+| Making an open register move by default (state changes, filtering, reveals), with the chosen direction's Motion score setting how much, gives builds real motion without motion for its own sake | **Hypothesis**. Untested: no build ran after the change. |
+| A reference-led direction, held as a constraint after the choice, gives a build more faithful to strong references than a direction from a verbal concept | **Rationale**. It is the owner's stated policy. Its no-tool form was probed up to the plan (§8): two plans made after choosing it restated its adapted aspects as rules. One build from a direction led by 21st components (§8, reference fidelity probe) kept its richness and part of its composition, with no other arm to compare. A second (§8, gate probes) kept composition, hierarchy and spacing by its judge's account, and lost two motions that it then fixed. That a restrained choice never lowers fidelity to a rich reference is untested. |
+| The visual-energy questions (focal point, eye path, the memorable interaction, flatter than the references?) catch a flat plan before code | **Hypothesis**. Four plans answered the questions and the two restrained ones kept their chosen energy (§8), but no plan was flat enough to show the check catching one. In the first full build (§8), no answer to them was visible before code was written. Since the check is written to a file, three redesign runs answered all eleven before their first product write (§8, gate probes); none of those plans was flat enough to test the catch either. Since the default taste probe, the questions also ask what moves, what gives the interface its energy, and whether the plan has collapsed into a dashboard; no plan has been made on that wording. |
+| Writing the pre-build check to `.design/prebuild.md`, with no product UI file before it, makes the check run before code and leave evidence | **Observed**, three redesign runs and two small fixes (§8, gate probes): every redesign wrote it first, and no small fix wrote one. Nothing but the text enforces it, and whether the file shaped the plan or only records it cannot be told. |
+| Inspecting a motion-led reference's video, demo or source before building, with a behavior note in the plan, keeps its motion through the build | **Hypothesis**. One run (§8, gate probes) inspected both references' videos and one's source. The note from source matched it. The note from video frames reversed which state hover produces. Its judge still found two motion losses, which the build then fixed. No run on the same references went without the rule. |
+| Giving `visual-design-judge` the selected references' previews beside the final screenshots lets it catch a build that came out flatter or more generic than its references | **Hypothesis**. In the first run (§8), the judge was given video frames beside the renders. It returned a verdict per aspect, but missed a motion gap the frames show, and listed a search trigger that works as an unverified loss. The build's own judge, given static previews only, misdescribed a motion-led reference. In a second run (§8, gate probes), the build's own judge got behavior notes and frames of the build at both widths. It found two motion losses, which the build acknowledged and fixed; a recording of the final build confirmed the fixes. No run compared a judge without references. |
+| Fetching a selected 21st.dev reference's source with `get_component` keeps its composition and behavior better than rebuilding it from the preview | **Rationale**. It is the owner's stated policy. One run (§8) fetched one reference's source and ported its mechanism; there is no rebuild-from-preview arm to compare it with. |
+| Porting a Tailwind component's behavior into a project without Tailwind keeps its accessibility and the project's stack | **Rationale**. Untested. |
 | "Compose the page, do not stack it" in `design-brief` keeps an ordinary request from shipping hero, one grid and footer | **Hypothesis**. A plan-level test could not reach it: no run invoked the skill (§8). It needs full builds. |
 | The narrow-viewport check that every desktop destination stays reachable gets a mobile navigation built | **Hypothesis**. Untested. The build that lacked one predates the check (§8). |
 | Writing an internal art direction when no research tool is connected gives a more product-specific page than falling back to defaults | **Hypothesis**. The step runs (6/6 in round 2, §8); its output was never compared with a run without it, or built. |

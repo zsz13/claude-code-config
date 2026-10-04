@@ -64,8 +64,12 @@ primary viewports.
 **New screen or major redesign**
 → `design-brief` if no design system exists, or if "Research" says research runs
 → research (see "Research")
+→ when the direction is open, three directions and **stop** for the user's
+  choice (see "Direction gate")
 → `frontend-design` for the aesthetic work
-→ compact visual plan → implement → render
+→ compact visual plan (→ pre-build AI-slop and visual-energy check, when this
+  work sets a new direction)
+→ implement → render
 → screenshots at ~375px and ~1280px → `visual-design-judge`
 → UX and accessibility pass → fix what matters → **render again**.
 
@@ -73,8 +77,11 @@ primary viewports.
 → `design-brief`
 → establish real content first
 → research (see "Research"), unless references were given
-→ product-specific direction
-→ define tokens → `frontend-design` → build → browser iteration
+→ product-specific direction: when the direction is open, three directions and
+  **stop** for the user's choice (see "Direction gate")
+→ `frontend-design` → compact visual plan with its tokens (→ pre-build AI-slop
+  and visual-energy check, when this work sets a new direction)
+→ define tokens → build → browser iteration
 → `visual-design-judge` → UX and accessibility pass → final responsive check.
 
 **Component system** (a new one, or a cleanup or rework of an existing one)
@@ -82,7 +89,11 @@ primary viewports.
 → `design-brief` for the system's direction when the product has no visual
   language yet, or when the request asks to change it; otherwise keep the
   existing visual language
-→ research (see "Research"): only for components whose behavior is the hard part
+→ research (see "Research"): only for components whose behavior is the hard
+  part, and for the look when the direction is open
+→ when the direction is open, three directions and **stop** for the user's
+  choice (see "Direction gate"), then the pre-build AI-slop and visual-energy
+  check on the plan
 → define or consolidate tokens and primitives → migrate the call sites
 → render the screens that use them at both primary viewports, before and after;
   a visual change the request did not ask for is a defect
@@ -109,8 +120,10 @@ never from what you might add while planning (see "Route by scope").
   When research runs here, it informs the new structure and behavior, and style
   only when the request asks for a new visual direction.
 - **Component system:** only for components whose behavior is the hard part;
-  never `get_inspiration`. Its look comes from `design-brief` when it has none
-  yet, and changes only when the request asks for a new one.
+  no `get_inspiration`. Its look comes from `design-brief` when it has none
+  yet, and changes only when the request asks for a new one. In those two
+  cases the direction gate applies, and research covers the look as it would
+  for a major redesign, `get_inspiration` included.
 - **New component:** only when its behavior is the hard part (a command
   palette, a data table, a dialog).
 - **Small UI fix, or a question about existing code:** never.
@@ -124,14 +137,76 @@ Use every source that is connected; none waits on another:
   once for the product (substantial work only) and `search` for the two to four
   sections or components whose composition or behavior is the hard part (hero,
   gallery, filtering, navigation, detail view, data table). Compare several
-  results and keep only what fits the direction. "Component libraries" says what
-  may be taken from them.
+  results and keep only what fits the direction, and among those the visually
+  strongest (`design-brief` step 3). "Component libraries" says what may be
+  taken from them.
+- **Look at the previews.** A title, tag or description is not a visual
+  reference. Open a result's screenshot or preview image (save it under the
+  job's or system temp directory and Read it, or open it in the browser) before
+  keeping it. Keep its URL, its video URL when it has one, and the saved file,
+  to show the user and to give `visual-design-judge` after the build. Never
+  mock up or build alternatives to stand in for references: the shipped
+  screens and component previews already show them.
+- **Enough, not exhaustive:** one broad query, then focused searches for the
+  visually important parts, until there is enough to support the direction (or
+  the three directions of "Direction gate"). Quality of inspection beats the
+  number of calls.
 - **None connected:** when research would have run, do not skip it and do not
   fall back to defaults. Write `design-brief`'s internal art direction (step 3)
   and state it before the plan. It covers exactly what research could have
   informed above: structure and behavior always, style only where style is open.
   When research would not have run, there is nothing to replace; match the
   system.
+
+## Direction gate
+
+The one statement of when the user chooses the direction. It applies to
+substantial frontend work whose **visual direction is open**: a new product or
+frontend, a major redesign, or a request for a new visual direction (a
+component system's included). It does not apply when the request names the
+direction or its references, when an existing brief does and the request does
+not ask to change it, to work that keeps an established system's look, or to
+anything that is not substantial work.
+
+```
+RESEARCH -> 3 DIRECTIONS -> USER SELECTS -> PLAN
+         -> PRE-BUILD AI-SLOP + VISUAL-ENERGY CHECK -> .design/prebuild.md
+         -> BUILD -> RENDER -> FINAL REFERENCE-AWARE VISUAL REVIEW
+```
+
+- After research, propose exactly three directions (`design-brief` step 4):
+  each scored for visual energy, density, motion and reference fidelity, no two
+  at the same energy level, and at least one reference-led. Unless
+  `design-brief` step 2 says the register is not open, the owner's default
+  taste applies: expressive but controlled, energies 2, 3 and 4, and the
+  reference-led direction at 3 or 4. Then **stop**.
+  Until the user picks A, B, C or a mix ("A's composition with C's
+  visual language"), write no production UI code: no components, pages,
+  styles or tokens in the product. A request for a plan stops here too; the
+  plan depends on the choice.
+- Choose yourself only when the user said to (choose autonomously, continue
+  without approval). Then take the strongest direction and record which one
+  and why at the top of the plan. Under the default taste, the strongest is
+  expressive but controlled, not the safest. "Build it" alone asks for the
+  result, not for skipping the choice. In a run nobody can answer (headless,
+  CI), the three directions are the run's output; a prompt for such a run that
+  wants a build says to choose.
+- After the choice, the plan turns the selected references into constraints,
+  and the pre-build AI-slop and visual-energy check runs on it (`design-brief`
+  step 5). A failed check revises the composition before any code is written.
+  The check also runs when the request itself named the new direction or its
+  references, because the user has chosen them there. Save a preview of each
+  reference the user gave (their image, or a screenshot of the page), as
+  research would have, for the final review.
+- A selected reference with meaningful motion or motion-led interaction is
+  inspected in motion (its video, live demo or source), not from its
+  screenshot alone, and the plan gets its behavior note (`design-brief`
+  step 5).
+- The check is written to `.design/prebuild.md` (`design-brief` step 5).
+  **No product UI file may be written before that file exists**, in
+  autonomous and headless runs too; an announced check leaves no evidence.
+- The rendered review checks drift from the chosen direction and, where it used
+  references, from them; it is not where the direction gets decided.
 
 ## Render it
 
@@ -211,6 +286,15 @@ Avoid every-element fade-up, animation on every card, parallax for its own sake,
 springs with no reason, and animation that exists because a library is installed.
 Prefer transform and opacity. Honor `prefers-reduced-motion`.
 
+Where the visual register is open (`design-brief` step 2), the default is not
+a static screen. Move what changes, each motion with one of the jobs above:
+state transitions, filtering and sorting, reveals, progress along a timeline,
+cards that move, emphasis on what just changed, hover. Once a direction is
+selected, its Motion score sets how much moves. Take the motion language from
+the selected references when they have one. Under reduced motion, an instant
+or cross-faded change replaces the movement; the default is still designed to
+move.
+
 Reach for Motion (`motion/react`) only for what the platform does not do
 cleanly: layout and shared-element transitions across re-renders, exit
 choreography, drag and gesture physics, interruptible springs. Adding it is a
@@ -232,13 +316,15 @@ The same holds for any component source: a registry, a component-search MCP
 (shadcn's in a shadcn project, 21st.dev's), or a community snippet. When to
 search one is under "Research". Use search and source tools, never a hosted
 generator. `get_component` returns React + Tailwind source and, on the free
-tier, spends one of two daily retrievals: fetch code only in such a project, and
-only for a component you will actually adapt. Add a component to the project
-only when this work needs it.
+tier, spends one of two daily retrievals: fetch code only in a React project,
+and only for a component you will actually adapt. In a project without
+Tailwind, do not add Tailwind for it: port its composition, behavior,
+interaction logic, motion and accessibility behavior into the project's
+existing styling. Add a component to the project only when this work needs it.
 Keep the behavior and accessibility, and restyle it to the project's tokens,
-type roles, spacing, radius, density, and interaction model. A demo's palette,
-radius, or type never becomes the product's; its composition is a reference to
-adapt, not a layout to paste.
+type roles, spacing, radius, density, and interaction model, and to the chosen
+direction. A demo's palette, radius, or type never becomes the product's; its
+composition is a reference to adapt, not a layout to paste.
 
 ## Performance
 
@@ -252,9 +338,25 @@ capability when it achieves the design cleanly.
 Frontend review is split on purpose:
 
 - **`visual-design-judge`** — rendered visual quality. Give it the product
-  context, the brief or the established design system, what data the product
-  already holds for these screens, the routes, and the screenshots. Withhold
-  your reasoning and your confidence, as with any judge.
+  context, the brief or the established design system, the chosen direction
+  when the pre-build check ran (its scores and the product-specific decisions
+  the check named), the preview images of the references it used (selected at
+  the gate or given by the user), what data the product already holds for
+  these screens, the routes, and the final screenshots. Withhold your reasoning
+  and your confidence, as with any judge.
+
+  For a reference-led direction, add its Adapts entries and the changes made
+  on purpose, each with its reason (decisions, like the direction), but not
+  your own verdict on what was preserved or lost. For a motion-led reference,
+  add its behavior note and frames, and the build's same behavior captured as
+  frames at ~1280 and ~375 from the same trigger (a screen recording, such as
+  Playwright's `recordVideo`, or screenshots in quick sequence); the judge
+  cannot record motion. Where the reference's motion could not be inspected,
+  the packet says so. The judge reports each adapted aspect as preserved,
+  intentionally changed or lost, and motion and interaction fidelity at
+  desktop and at mobile separately. The final report sets its verdicts beside
+  your fidelity ledger (`design-brief` step 5); where they differ, look at the
+  render again and say which holds.
 - **Engineering judges** (`adversarial-jury`) — correctness, tests, types,
   runtime behavior. Add `security-judge` or `architecture-judge` only if the
   change actually touches those.

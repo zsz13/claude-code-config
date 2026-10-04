@@ -268,6 +268,12 @@ almost nothing.
 - It does not ship a house style, a palette, or a UI aesthetic. The design layer
   defines process and a quality floor; aesthetic authority is user direction >
   the project's existing design system > the project's own design brief.
+  Below all three sits one default, the owner's taste: where the request
+  leaves the visual register open, directions lean expressive but controlled
+  (`design-brief` step 2). It asks for qualities (a focal point, layered
+  composition, real motion) and rules out defaults (a flat grey dashboard, a
+  dark console), but names no palette, typeface or layout, and a request, a
+  system or a brief overrides it.
 - It does not pin tool or language versions in global config. Versions are
   chosen at project creation or at a deliberate upgrade, by checking what is
   current *then*.

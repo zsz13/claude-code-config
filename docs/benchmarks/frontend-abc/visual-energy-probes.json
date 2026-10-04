@@ -1,0 +1,1206 @@
+{
+ "note": "Visual energy and reference-led probes, 2026-10-01. Protocol: visual-energy-probe.md. Scores (energy, density, motion, fidelity, reference_led, aspects_named, recommends) were read from each reply by the author of the change; everything else was extracted from the stream-json transcripts, which are not published, except git_status_after, which is `git status --short` in the run's fixture copy after the run (resumed forks share their first turn's copy). Lists of three are per direction in the reply's order. Runs ending -ref and -res are forks of the named first turn, resumed with a choice; e-1 and e-2 ran on the established-system fixture. The only MCP server in any run was the account's claude.ai document connector; no research server was connected.",
+ "texts": {
+  "baseline": "the direction gate text before this change",
+  "text1": "scores and a reference-led direction added",
+  "text2": "adds an Adapts field for the six aspects",
+  "text3": "literal score line, six ordered Adapts entries, reference-led capped at two references",
+  "final": "text3 plus the fixes from a blind review: the published text, except three later sentences in the step after the choice (benchmarks section 8 names them)"
+ },
+ "runs": [
+  {
+   "run": "base-r1",
+   "text": "baseline",
+   "prompt": "Completely rethink Seedkeep's frontend visual design and UX while preserving its existing functionality.",
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Bash"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.25,
+   "reply": "I haven't written any UI code yet. For a redesign where you haven't named a direction, I stop and let you pick one first.\n\n**What Seedkeep does today** (everything below keeps it): it shows a list of seed loans with variety, borrower, date out and status. You can filter by variety and mark a loan as returned. It's one screen with three sample loans, built in React and plain CSS with no design system. The current look is generic: white cards on grey with a purple button. There are also accessibility gaps I'll fix whichever direction you choose: the search box has no label, the \"Return\" button doesn't say which loan it's for, there are no visible focus styles, and the 11px footer text has low contrast.\n\n**About the references:** I couldn't search for real products to compare against, because no screen or component search tools (Refero, Mobbin, 21st.dev) are connected. Each direction instead borrows from paper records that seed-library volunteers already use.\n\n---\n\n### A. The Lending Ledger\n- **Borrowed from:** a library borrowing card (the date-stamped slip in a book's pocket) for the row shape, a seed library's paper sign-out binder for the dense, ruled layout, and a rubber date stamp for the status mark.\n- **Look:** a single-column ruled ledger instead of a card grid. Variety names are in a sturdy serif, and borrowers and dates are in a typewriter-style monospace. Paper colours (ink black, buff, faded red stamp ink) with almost no rounded corners. Loans are grouped into \"Out in gardens\" and \"Back on the shelf\", and search sits at the top like a binder tab.\n- **Signature:** marking a loan returned stamps \"RETURNED · 12 OCT\" across its row at a slight angle. The stamp is written text, so the status doesn't rely on colour alone.\n- **Avoids:** cards, pill badges, shadows, an empty header bar.\n- **Tradeoff:** it shows the most loans at a glance, but on phones the rows have to fold into stacked entries, and it can look austere.\n\n### B. The Packet Drawer\n- **Borrowed from:** seed envelopes (big variety name, small print for the details), the seed-library drawer with tabbed dividers, and handwritten borrower labels.\n- **Look:** each loan is drawn as a seed packet with a flap and a large variety name, with the borrower and date on a small label. Packets are filed under month-out dividers (March, April…). The type pairs a condensed display face with a humanist sans, in warm kraft-paper and seed-ink colours. Corners are square, apart from the packet flap.\n- **Signature:** when a loan is returned, its packet flap closes and the packet slides into a \"Returned\" section of the drawer.\n- **Avoids:** generic uniform cards, a purple accent, dashboard metrics.\n- **Tradeoff:** it's the warmest and most memorable option, but it shows the fewest loans per screen, it could tip into kitsch, and it gets unwieldy past roughly 50 loans.\n\n### C. The Season Almanac\n- **Borrowed from:** a gardener's almanac page laid out month by month, a planting calendar with bars for each crop, and the seasonal return deadline written on seed-library notices.\n- **Look:** loans are laid out along the growing season from March to October. Each loan is a bar running from its date out to today, or to its return date. A vertical \"today\" line shows at a glance who has had seed the longest. The type is a book-like serif for headings with tabular figures, the colours are muted, and the only accent is reserved for loans still out. On phones it becomes a compact list with a duration like \"6 weeks out\".\n- **Signature:** the today line, with the end-of-season return deadline marked on the same timeline.\n- **Avoids:** card grids, a status-pill wall, a centred narrow container.\n- **Tradeoff:** it's the most useful for chasing overdue seed, but it changes how loans are presented rather than just restyling them, and very short loans render as thin bars.\n\n---\n\n**Which do you want: A, B, C, or a mix** (for example, \"A's ledger with C's today line\")? Once you choose, I'll write a short plan, check it for generic patterns before building, then build it and screenshot it at phone and desktop widths.\n\nThere's one optional extra I haven't included in any direction: the README mentions recording whether the borrower returned saved seed, but the app only stores \"returned\" as yes or no. I can add a \"saved seed returned\" field if you want it, but none of the three directions depend on it.",
+   "git_status_after": []
+  },
+  {
+   "run": "base-r2",
+   "text": "baseline",
+   "prompt": "Seedkeep needs a major redesign: a whole new look and layout for the app. Go ahead and build it.",
+   "recommends": "the ledger (B, with A's date-stamp)",
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "Skill"
+   ],
+   "skills_invoked": [
+    "frontend-quality",
+    "design-brief"
+   ],
+   "design_brief_reached_via": [
+    "Skill"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.22,
+   "reply": "I didn't build anything yet. This is a full redesign with no visual direction set, so you need to pick one first. Here are three. Once you choose, I'll build it and check the result in a browser on phone and desktop.\n\n**What's there now:** one React file (`src/App.jsx`) with a header, a search box, a grid of three loan cards, a \"Return\" button and a footer. The styling is generic: white cards on grey, a purple button, and no design system. The README says the job is: volunteers record which seed packets are on loan, to whom, and whether saved seed came back at the end of the season.\n\n**About the references:** no design-reference tools are connected (no Refero, Mobbin or 21st.dev), so I didn't look at any shipped products. Instead, each direction draws on things volunteers at a seed library already handle.\n\n---\n\n### A. Packet drawer\nThe app looks like the library's card catalogue drawer, with each loan shown as a seed packet.\n- **Based on:** the paper seed packet (variety name in big type, small print on the back); library card-catalogue drawers with A–Z dividers; the date-stamped due slip in a library book.\n- **Look:** warm paper background, a serif for variety names, a monospaced font for dates. Packets have square corners and a printed edge rather than a shadow. Medium density, with the list split into A–Z sections.\n- **Signature:** the date-stamp. Each loan shows its checkout date in rubber-stamp style, and marking a loan returned adds a second stamp over it.\n- **Avoids:** a uniform card grid, coloured pills, a centred hero.\n- **Tradeoff:** the nicest of the three to browse, but slower to scan when there are 200 loans.\n\n### B. Lending ledger\nThe app is the volunteers' loan ledger: one row per loan, built for a busy table at the swap.\n- **Based on:** a ruled lending ledger; a tool-library sign-out sheet on a clipboard; a seed-saving record that tracks generations.\n- **Look:** a dense table with ruled lines, a plain sans-serif with figures that line up in columns, ink on cream, and one red-ink colour reserved for overdue or unreturned loans. On a phone, each row folds into a two-line entry.\n- **Signature:** a \"season\" column showing how far each loan is through the growing season, and whether saved seed came back.\n- **Avoids:** cards, decoration, empty space for its own sake.\n- **Tradeoff:** the fastest for daily use, and the least warm or welcoming.\n\n### C. Season board\nThe app is arranged by where each packet is in the growing season.\n- **Based on:** the sowing calendar printed on seed packets (month bands); a garden planting plan with plots in rows; the plant labels pushed into the soil.\n- **Look:** loans sit in columns across the season: Out → Growing → Seed saved → Returned. The type is like a botanical label, with soil, leaf and seed tones each tied to a stage. On a phone, the columns become tabs you swipe between.\n- **Signature:** a month strip across the top that shows how many packets are out in each month of the season.\n- **Avoids:** a plain list, generic dashboard number tiles, purple.\n- **Tradeoff:** it needs \"growing\" and \"seed saved\" stages, which today's data doesn't have (it only knows returned or not). It changes how the app works, not just how it looks.\n\n---\n\nPick **A**, **B**, **C**, or a mix (for example, \"B's ledger with A's date-stamp\"). If you'd rather I just choose, say so: I'd go with **B, plus A's date-stamp**.",
+   "git_status_after": []
+  },
+  {
+   "run": "base-r1b",
+   "text": "baseline",
+   "prompt": "Completely rethink Seedkeep's frontend visual design and UX while preserving its existing functionality.",
+   "recommends": "the ledger (A)",
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Bash"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.23,
+   "reply": "I'm proposing three design directions below. The skill's direction gate means I stop here for your choice, so I haven't changed any code yet.\n\n## What the app does today (all of this stays)\n\n`src/App.jsx` is a single screen with three seeded loans. Each loan has a variety, a borrower, a date out, and whether it was returned. You can search by variety name, and a \"Return\" button marks a loan as returned. The current look is a generic template: a white header, white cards on a gray background, an indigo button, a small \"© 2026\" footer, and status shown mostly by a yellow or green pill. The search box has no label, and the \"Return\" button doesn't say which loan it applies to.\n\nThese accessibility fixes go into every direction: a labelled search field; \"Mark returned\" buttons whose accessible name includes the variety and borrower; status shown in words as well as colour; a visible focus ring; a \"no varieties match\" message when search finds nothing; and dates written as \"14 Mar 2026\" with a \"days out\" count.\n\n## Research\n\nNo screen-reference or component tools (Refero, Mobbin, 21st.dev) are connected, so I didn't look at any shipped products. Instead the directions draw on things seed-library volunteers already handle: library due-date cards, seed packets, an allotment shed ledger, and plant-nursery tags.\n\nThe layout I'm avoiding in all three is the current one: a header above a centred column of identical rounded cards on gray, pills for everything, one accent colour over neutral greys, and a footer that adds nothing.\n\n---\n\n### A — The Lending Ledger\n**Built from:** a handwritten loan ledger and a library date-due slip.\n- **Layout:** one ruled table, one row per loan (variety / borrower / out since / days out / status). Search sits in the top line of the page as \"Find a variety…\". It packs a lot onto the screen, which suits volunteers working through a season's loans at the desk. On phones, each row stacks into two lines.\n- **Look:** a serif for variety names, a monospaced font for dates, warm off-white paper, ink-dark text, and faint ruled lines. The only colour is a rust ink for overdue loans.\n- **Signature:** returned loans aren't removed. They get a \"RETURNED · seed saved\" mark like a rubber stamp, so the ledger keeps the season's history.\n- **Avoids:** cards, pills, shadows.\n- **Tradeoff:** it's the least visual of the three, and the table on mobile needs careful work.\n\n### B — Seed Packet Drawer\n**Built from:** printed seed packets and the card drawer in a library catalogue.\n- **Layout:** each loan is a packet-shaped tile, taller than it is wide, with a flat top edge (the packet flap). The variety name is big, and the borrower and date sit on a \"stamped\" label strip at the bottom. Loans are grouped under \"Out now\" and \"Back in the library\", so you see status from the structure, not from colour.\n- **Look:** a bold condensed display font in the style of old seed-catalogue print, a palette drawn from the varieties themselves (tomato purple, bean cream, cucumber yellow-green) used one colour per packet, and a kraft-paper background.\n- **Signature:** the packet tile itself. When you mark one returned, it moves into the \"Back in the library\" drawer.\n- **Avoids:** a uniform grid where every card is the same, and one accent colour over grey.\n- **Tradeoff:** it's the most decorative, and it fits fewer loans on screen than A.\n\n### C — Season Board\n**Built from:** a garden-planning wall calendar and nursery plant tags.\n- **Layout:** a timeline across the growing season (Mar → Oct). Each loan is a bar running from its date out to today, or to its return date. On mobile it becomes a vertical list with a small strip showing elapsed time. A short summary line sits above it: \"2 packets out · 1 seed returned this season\".\n- **Look:** a clean sans-serif paired with a slightly handwritten font for tag labels, a green and soil-brown palette, and plant-tag shapes with notched ends for the bars.\n- **Signature:** seeing how long each packet has been out across the season, which is the real question when you're asking for seed back at season's end.\n- **Avoids:** card grids and stat tiles.\n- **Tradeoff:** it's the most new code (a timeline layout), and with only three loans the timeline looks sparse.\n\n---\n\n**My recommendation is A.** It best fits the actual job, which is volunteers keeping track of who has what, and it's the most legible and accessible. A strong mix would be **A's ledger structure with B's \"Out now / Back in the library\" grouping**.\n\nPick A, B, C or a mix, and I'll write the plan, check it against the generic layouts above, build it, and review it in the browser at phone and desktop widths.",
+   "git_status_after": []
+  },
+  {
+   "run": "base-r2b",
+   "text": "baseline",
+   "prompt": "Seedkeep needs a major redesign: a whole new look and layout for the app. Go ahead and build it.",
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Bash"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.25,
+   "reply": "Before writing any code I need you to choose a direction. This is a full redesign and you haven't specified a look, so my process is to propose three directions and let you pick before I build. \"Build it\" covers making the result, not choosing its look for you. If you'd rather I just pick the strongest one, say so and I'll start.\n\n**What exists now:** one screen (`src/App.jsx`, `src/App.css`). It has a search box and a grid of white cards on a gray background showing variety, borrower, date out, an \"On loan\"/\"Returned\" pill and an indigo Return button. There's no design system to keep, so the direction is open.\n\n**References:** no design-reference tools (Refero, Mobbin, 21st.dev) are connected, so I didn't look at any shipped products. Each direction instead borrows from paper a seed library already uses: library date-due slips and loan ledgers, seed packets, planting calendars, and the sign-out sheet on a seed-swap table.\n\n**What all three keep in common:** the main job is seeing what's still out and recording returns, for volunteers at a desk or on a phone at a swap table. All three drop the generic layout (header over a centred column of identical rounded cards), the indigo \"SaaS\" button and status shown only by pill colour. Each needs an equally good layout at about 375px and 1280px wide.\n\n---\n\n### A — Loan ledger\nA library loan register: dense ruled rows, grouped into **Still out** and **Seed returned**, with the oldest loans first.\n- **Borrows from:** a library loan register (ruled columns, dates in a left margin) and a date-due slip (stamped dates).\n- **Look:** a book serif for variety names, a monospace face for borrowers and dates, warm paper-white background, ink-black text, one stamp-red accent. Thin lines between rows instead of cards.\n- **Signature:** marking a loan returned \"stamps\" the row with a dated **SEED RETURNED** mark. Status is a word plus a stamp, never just a colour.\n- **Tradeoff:** the least decorative of the three. On phones each row has to fold into a two-line entry.\n\n### B — Packet drawer\nEach loan shown as an actual seed packet: an envelope with the variety in large print on the front and a borrower slip tucked in the back. Packets are filed in drawers by crop (tomatoes, beans, cucurbits).\n- **Borrows from:** printed seed packets (heavy display type, a growing-notes panel) and a library card-catalogue drawer (labelled drawer fronts, index tabs).\n- **Look:** condensed display type, earthy printed-ink colours, envelope shape with a flap. The warmest and most tactile option.\n- **Signature:** a returned packet shows its flap sealed with the return date.\n- **Tradeoff:** lowest density, so it gets unwieldy past a few dozen loans. Grouping by crop needs a crop field the data doesn't have yet; I'd have to add it.\n\n### C — Season board\nA planting-calendar timeline running from spring sowing to the end-of-season return date. Each loan is a row showing how long it has been out, with a \"now\" line across the board.\n- **Borrows from:** a planting calendar / almanac (month columns, sow and harvest bands) and a seed-swap sign-out sheet (name, date, tick box).\n- **Look:** clean sans-serif, sowing-to-harvest band colours, a strong vertical \"today\" line, a dedicated **Awaiting saved seed** list at the deadline end.\n- **Signature:** the season strip, so you can see at a glance who's late with seed as the deadline approaches.\n- **Tradeoff:** it needs a season end date the app doesn't have (I'd add a setting, e.g. 31 Oct). On phones the timeline has to become a vertical list with small progress bars.\n\n---\n\n**Which do you want: A, B, C, or a mix?** For example, \"A's ledger with C's season deadline\". Once you choose, I'll write a short plan, check it for generic patterns, then build it and check screenshots at both widths.\n\nTwo things I noticed but won't change unless you ask:\n- There's no way to add a new loan.\n- The data has a single `returned` flag, but the README tracks *saved seed* coming back, which may not be the same as the packet coming back.",
+   "git_status_after": []
+  },
+  {
+   "run": "new-r1a",
+   "text": "text1",
+   "prompt": "Completely rethink Seedkeep's frontend visual design and UX while preserving its existing functionality.",
+   "energy": [
+    2,
+    3,
+    4
+   ],
+   "density": [
+    3,
+    2,
+    2
+   ],
+   "motion": [
+    1,
+    2,
+    3
+   ],
+   "fidelity": [
+    "high",
+    "medium",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "Read"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Read"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.27,
+   "reply": "I haven't written any code yet. This is a full redesign and the app has no design system, so the visual direction is still open. Here are three directions to choose from first.\n\n**What has to keep working.** The app shows a list of loans, each with variety, borrower, date out and returned / on loan. You can search by variety name and mark a loan as returned. All of that stays, and I'm adding no new data or features.\n\n**Fixes that apply whichever direction you pick:**\n- The search box gets a real label.\n- Each Return button names its loan (e.g. \"Record return: Cherokee Purple tomato\").\n- Searching with no matches shows a message.\n- Dates become readable (\"14 Mar 2026\").\n- Every control gets a visible focus outline.\n- Mobile layout gets proper attention.\n\nNo research tools (Refero, Mobbin, 21st.dev) are connected, so I didn't look at any real apps. The references are things from the seed-library world itself: a library book's date-due slip, a seed packet, a printed seed catalogue, and a garden almanac's season chart. If there's an app or page you'd like this to follow, tell me.\n\n**Looks I'm deliberately avoiding:** a white header over a centred column, white cards on a grey background, coloured status pills and the indigo button. That's what the app has now, and it could be any app.\n\n---\n\n### A — The Lending Ledger *(follows real artifacts most closely)*\n**Scores:** visual energy 2 · density 3 · motion 1 · reference fidelity high\n\n- **Based on:** a library circulation ledger and the date-due slip pasted inside a library book.\n  - **Takes from them:** ruled rows, column order (variety · borrower · out · status), the stamped look and their dense rhythm.\n  - **Leaves out:** aged-paper textures and faux handwriting.\n- **Look:** warm off-white page with thin ink-coloured rules. Variety names in a serif, dates in fixed-width figures. One rust-red ink colour, used only for \"On loan\".\n  - Desktop shows a true table. On mobile each loan becomes a stacked entry.\n  - Search sits at the top with a live count (\"3 packets · 2 out\").\n- **Signature:** recording a return stamps a slightly rotated \"SEED RETURNED\" mark into the row.\n- **Tradeoff:** quiet and very fast for volunteers to use, but the least distinctive of the three.\n\n### B — The Packet Tin\n**Scores:** visual energy 3 · density 2 · motion 2 · reference fidelity medium\n\n- **Based on:** paper seed packets, the sorting tins seed libraries actually keep, and seed-catalogue type.\n- **Layout:** two zones instead of one grid: **\"Out in gardens\"** and **\"Back in the tin\"**.\n  - Each loan is a packet-shaped object: kraft-paper background, the variety in large catalogue type, and the borrower and date like the planting notes on a packet's back.\n  - Search filters both zones.\n- **Look:** big contrast between packet and page. Earthy colours (kraft, soil, sprout green) and blocky catalogue headings.\n- **Signature:** recording a return slides the packet from \"Out in gardens\" into the tin, the app's one deliberate animation (switched off if the user has reduced motion on).\n- **Tradeoff:** shows fewer loans per screen than A, and the packet shape needs care so it doesn't turn back into ordinary cards.\n\n### C — The Season Field\n**Scores:** visual energy 4 · density 2 · motion 3 · reference fidelity low\n\n- **Based on:** a garden almanac's planting chart and a botanical specimen sheet.\n- **Layout:** a horizontal growing-season timeline (March to October).\n  - Each loan is a stem that starts at its date out and grows to today. Returned loans end in a seed head.\n  - On mobile the timeline runs vertically.\n  - Search dims the stems that don't match.\n- **Look:** big month labels, fine botanical lines, and a sparse illustrated feel.\n- **Signature:** you see the whole season at a glance: what's out, for how long, and what's come back.\n- **Tradeoff:** the most memorable but the slowest to scan by name. It needs a plain list alongside it for screen readers and keyboard use, and it's the most work to build.\n\n---\n\nPick **A, B, C**, or a mix (e.g. \"A's ledger with B's return animation\"). After that I'll write the plan, check it against these generic looks, then build it and check it in the browser on phone and desktop.",
+   "git_status_after": []
+  },
+  {
+   "run": "new-r1b",
+   "text": "text1",
+   "prompt": "Completely rethink Seedkeep's frontend visual design and UX while preserving its existing functionality.",
+   "energy": [
+    1,
+    3,
+    4
+   ],
+   "density": [
+    3,
+    2,
+    3
+   ],
+   "motion": [
+    1,
+    3,
+    2
+   ],
+   "fidelity": [
+    "high",
+    "medium",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "Read"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Read"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.26,
+   "reply": "I read the whole app before designing anything. Seedkeep is a single screen: a search box filters loans by variety, each loan shows the variety, borrower, loan date and status, and a \"Return\" button marks it returned. All three directions below keep exactly those functions. They also fix the current accessibility gaps: the search field has no label, buttons have no focus styling, and every \"Return\" button has the same accessible name.\n\nThis is a major redesign with no visual direction chosen yet, so I haven't written any UI code. You pick a direction first. None of the design reference tools (Refero, Mobbin, 21st.dev) are connected, so **I didn't look at any real product screens**. The references are objects seed-library volunteers already handle. If there's a product or page you'd rather one of these follow, name it.\n\n---\n\n### A — The Circulation Ledger *(based on the references)*\n**Scores:** energy 1 · density 3 · motion 1 · reference fidelity high\n\n- **References:** the date-due card in a library book's pocket (stamped dates in columns, a borrower line) and a bound circulation ledger (ruled rows, fixed columns).\n- **What it takes from them:** the layout (ruled rows instead of a grid of cards), the hierarchy (variety → borrower → date out → status), and the rhythm of the ruled lines. It leaves out paper texture, fake handwriting and anything skeuomorphic.\n- **Look:** a warm off-white page with ink-dark text. Variety names are set in a serif and dates in aligned figures, shown as \"14 Mar 2026\". Lines are hairline rules, with almost no rounded corners or shadows. One accent colour, ink-red, is used only for the return action.\n- **Signature:** marking a loan returned prints a \"RETURNED · 1 Oct\" date stamp in the row's status column, like a librarian's stamp. It's a word, not just a colour.\n- **Avoids:** cards, pills, the grey page background.\n- **Tradeoff:** the quietest of the three, and less memorable at first sight.\n\n### B — The Seed Packet Drawer\n**Scores:** energy 3 · density 2 · motion 3 · reference fidelity medium\n\n- **References:** vintage seed packets (variety name large, the type of plant as a label), a card-catalogue drawer with index tabs, and a library's swap shelf.\n- **Layout:** the screen is split into two drawers, \"Out in gardens\" and \"Back on the shelf\". Each loan is a packet-shaped card with a folded top flap. The variety name is set large in a condensed serif, with the borrower and date out written as a handwritten-style note on the packet.\n- **Look:** an earthy palette, with colours drawn from the plant types (tomato, bean, cucumber). It's tactile but flat, with no gradients.\n- **Signature:** \"Return\" slides the packet from the gardens drawer into the shelf drawer. It's the one deliberate animation, and it's turned off when reduced motion is requested.\n- **Avoids:** a table look, a dashboard look.\n- **Tradeoff:** lower density, so long lists need more scrolling.\n\n### C — The Season Almanac\n**Scores:** energy 4 · density 3 · motion 2 · reference fidelity low\n\n- **References:** a gardener's planting calendar (months across the top), an almanac page with columns and woodcut-style glyphs, and a seed-saving log.\n- **Layout:** the main view is a season timeline from March to October. Each loan is a bar that starts on its loan date and grows toward today. Returned loans end in a small seed glyph. Search highlights matching bars, and a list view stays available beside the timeline for keyboard and screen-reader use.\n- **Look:** headings in a bold almanac-style display font, a strong month grid, and colour that shifts with the season.\n- **Signature:** you can read at a glance which seed has been out longest this season.\n- **Avoids:** the list-of-cards default.\n- **Tradeoff:** the most work to build. It adds a timeline view the app doesn't have today, though no new data, and on mobile it needs the list fallback.\n\n---\n\nWhich do you want: **A, B, C, or a mix** (for example, \"A's ledger rows with B's drawer split\")? Once you choose, I'll write a short plan and check it against generic defaults before building. Then I'll check it in the browser at 375px and 1280px.",
+   "git_status_after": []
+  },
+  {
+   "run": "new-r2a",
+   "text": "text1",
+   "prompt": "Seedkeep needs a major redesign: a whole new look and layout for the app. Go ahead and build it.",
+   "energy": [
+    1,
+    2,
+    3
+   ],
+   "density": [
+    3,
+    2,
+    2
+   ],
+   "motion": [
+    1,
+    2,
+    3
+   ],
+   "fidelity": [
+    "medium",
+    "high",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "B",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "interaction model",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Skill",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality",
+    "design-brief"
+   ],
+   "design_brief_reached_via": [
+    "Skill"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.24,
+   "reply": "I haven't written any code yet. A redesign this open has a choice that should be yours: the overall direction for the app. Below are three options. Pick one and I'll build it.\n\n**What I started from:** Seedkeep is a single screen today. It's a search box over generic white cards on a gray background with an indigo button, and no design system to keep. Volunteers use it at the library desk to check what's on loan, who has it, and mark returns. No design-research tools are connected here, so I haven't looked at any real products. Instead, each direction is based on objects from seed-library life: seed packets, library card pockets and due-date slips, herbarium sheets, ledgers and planting calendars. If there's an app or page you'd rather it look like, name it and I'll use that instead.\n\n---\n\n### A — The Lending Ledger (restrained)\n**Scores:** energy 1 · density 3 · motion 1 · reference fidelity: medium (borrows the ledger's principles)\n**Based on:** a bound circulation ledger (ruled rows, column headings, handwritten entries); a library date-due slip (stamped dates as the main way to read time).\n**Look:** a dense, sortable table instead of cards. A serif for variety names and monospaced, stamp-style dates. Warm off-white \"paper\" with a fine rule between rows and almost no colour, plus a single ink-red accent kept for overdue loans. Square corners throughout.\n**Signature:** each row shows how long a packet has been out (e.g. \"out 31 weeks\"), and gets a bolder stamp once it passes the season's return window.\n**Avoids:** cards, pills and shadows.\n**Tradeoff:** fastest to scan at the desk, but quiet and not very inviting for new volunteers.\n\n### B — The Card Catalogue (polished, follows its references most closely)\n**Scores:** energy 2 · density 2 · motion 2 · reference fidelity: **high**\n**Based on:** a library book pocket with a borrower card (built directly on it), and a seed envelope's printed face (variety name, sowing notes, a small lot number).\n- **What it takes:** the pocket card's layout (variety at the top, a ruled list of borrowers and dates below), the order of information on the envelope, and the act of a card sliding back into its pocket on return.\n- **What it leaves out:** the aged-paper look, fake stains and skeuomorphic textures.\n\n**Look:** each loan is a cream index card with a coloured tab for the crop family (labelled with text too, not colour alone). The cards sit in a drawer you can filter by family. Condensed sans headings with a typewriter-style face for borrower entries.\n**Signature:** marking a loan returned slides its card down into the pocket, and a \"saved seed returned ✓\" stamp appears on it.\n**Avoids:** generic rounded white cards, an indigo accent, or a centred page with a big header.\n**Tradeoff:** shows fewer loans per screen than A, and once there are hundreds of loans it needs good filtering.\n\n### C — The Season Wheel (expressive)\n**Scores:** energy 3 · density 2 · motion 3 · reference fidelity: low (the objects only set the tone)\n**Based on:** a planting calendar (sow → grow → harvest → save seed), a herbarium sheet (one specimen plus labels on a large field), and botanical illustration plates.\n**Look:** the main view is a timeline of the growing season. Each loan is a strand running from the date it went out towards the seed-saving window, so the season itself shows what's overdue. The search and list sit beside the timeline. Deep greens and a soil brown, an expressive serif for display text, and generous space.\n**Signature:** a \"season now\" line moves across the timeline. Loans that cross the harvest mark without saved seed coming back become hollow strands, labelled \"awaiting seed\".\n**Avoids:** a dashboard grid, metric tiles, or glass and gradient effects.\n**Tradeoff:** the most memorable and the best at showing the season, but the hardest to build. On a phone the timeline has to collapse into a vertical list.\n\n---\n\n**One thing I noticed:** the README says the key fact is *whether the borrower brought saved seed back*, but the app only tracks \"returned\". All three directions could show saved seed as its own status. That would be a small data change, and I'll only add it if you want it.\n\nReply with **A, B, C**, or a mix (e.g. \"B's cards with A's density\"), and say whether you want the saved-seed status. Then I'll build it and check it in the browser on mobile and desktop.",
+   "git_status_after": []
+  },
+  {
+   "run": "new-r2b",
+   "text": "text1",
+   "prompt": "Seedkeep needs a major redesign: a whole new look and layout for the app. Go ahead and build it.",
+   "energy": [
+    2,
+    3,
+    4
+   ],
+   "density": [
+    3,
+    2,
+    1
+   ],
+   "motion": [
+    1,
+    3,
+    3
+   ],
+   "fidelity": [
+    "high",
+    "medium",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "interaction model",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Bash"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.25,
+   "reply": "The redesign's visual direction is still open, so there are three options below for you to choose from. I haven't written any production code yet. \"Build it\" tells me to make it, but not which direction to take.\n\n**What I found:** Seedkeep is one screen (`src/App.jsx`, `src/App.css`): a search box over a grid of white cards on grey, with indigo buttons and amber/green pills. It has no design system, just stock default colours. The data is three loans, each with a variety, borrower, date out and one `returned` flag.\n\n**No design-reference tools are connected**, so I didn't look at any real apps. Instead, each direction draws on things volunteers at a seed library already handle:\n\n- the library checkout card with its date stamps\n- seed packets made of kraft paper and printed with sowing instructions\n- the gardener's planting calendar\n- the seed-saving ledger\n- herbarium specimen labels\n\nIf there's an existing app or page you'd like Seedkeep to look like, tell me and I'll use it instead.\n\nFor every direction, the layout won't be a header over a centred grid of identical white cards with a purple button.\n\n---\n\n### A: Circulation Desk *(based closely on the library checkout card)*\n**Energy 2 · Density 3 · Motion 1 · Reference fidelity: high**\n- **References:** the library checkout card (taken: ruled columns, stamped dates, borrower-by-date order) and the card-catalogue drawer (taken: tabbed A–Z dividers for jumping between varieties). Not taken: aged-paper textures or fake typewriter wear.\n- **Layout:** a compact table of loans you can scan quickly. Rows are grouped under \"On loan\" and \"Back in the library\". The search box sits above the table and filters it. Clicking a row opens its checkout slip beside it on desktop, or below it on mobile.\n- **Look:** a monospaced font for dates and borrowers and a plain serif for variety names. Off-white paper colour with stamp-pad red and blue ink as the only accents. Thin ruled lines instead of cards, and square corners.\n- **Signature:** marking a loan returned stamps \"RETURNED · 1 OCT 2026\" onto the slip, slightly tilted.\n- **Avoids:** cards, pills and drop shadows.\n- **Tradeoff:** it's the most practical option but the least striking. It's built for volunteers working at a desk.\n\n### B: Growing Season\n**Energy 3 · Density 2 · Motion 3 · Reference fidelity: medium**\n- **References:** the gardener's planting calendar (taken: months running across the page, with bars for sowing and harvest) and the seed-saving ledger (taken: what's owed back, and by when).\n- **Layout:** each loan sits on a growing-season timeline from March to October. A season band at the top shows today's date. Loans group by stage: just borrowed, growing, saved seed due back, returned.\n- **Look:** large serif variety names and a palette taken from crops (tomato red, bean purple, cucumber yellow-green) on a soft loam background. Bars have rounded ends and cards are kept for loan details.\n- **Signature:** a bar for every loan running from its borrow date to the end of the season. When saved seed comes back, the bar fills in and a small seed mark appears.\n- **Avoids:** a row of headline numbers at the top and uniform grids.\n- **Tradeoff:** it needs an end-of-season date, which the app doesn't have yet. I'd add one setting for it. The timeline also has to switch to a vertical layout on mobile.\n\n### C: Packet Wall *(experimental)*\n**Energy 4 · Density 1 · Motion 3 · Reference fidelity: low**\n- **References:** the seed packet itself (front: the variety in big type plus artwork; back: notes) and herbarium labels (taken: small annotation type).\n- **Layout:** each loan is a seed packet in the shape of an envelope, filed in drawers by crop family (nightshades, legumes, gourds). Opening a packet flips it to the back, which shows the borrower, the date out and a \"Mark seed returned\" action.\n- **Look:** heavy printed-label type, a kraft-brown and cream background, and a different CSS-drawn pattern for each crop family. No images needed.\n- **Signature:** the packet flip, with on-loan packets shown sticking up out of their drawer.\n- **Avoids:** tables and ordinary app layout.\n- **Tradeoff:** it's the most memorable but the slowest to scan once there are hundreds of loans. Flipping cards needs careful keyboard and screen-reader handling.\n\n---\n\n**One question about the data:** the README says volunteers track whether the borrower *returned saved seed*, but the app only has one \"Returned\" flag. B and C would work better if \"packet returned\" and \"saved seed returned\" were tracked separately. Do you want that change included in the redesign?\n\nWhich direction do you want: A, B, C, or a mix (for example, \"A's table with B's season bar\")? Or do you want me to pick?",
+   "git_status_after": []
+  },
+  {
+   "run": "new2-r1",
+   "text": "text2",
+   "prompt": "Completely rethink Seedkeep's frontend visual design and UX while preserving its existing functionality.",
+   "energy": [
+    2,
+    3,
+    4
+   ],
+   "density": [
+    3,
+    2,
+    3
+   ],
+   "motion": [
+    1,
+    2,
+    3
+   ],
+   "fidelity": [
+    "in words: following them closely",
+    null,
+    null
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [],
+   "recommends": "the ledger (A)",
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "Read"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Read"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.27,
+   "reply": "I've stopped before writing any UI code. Seedkeep has no design system, so the visual direction is still open and you need to pick one first. None of the reference-research tools (Refero, Mobbin, 21st.dev) are connected, so I didn't look at any shipped products. The three directions below are drawn from things volunteers at a seed library already handle.\n\n## What has to keep working\nThese all come from `src/App.jsx`:\n- Show the loans with variety, borrower and date out.\n- Search by variety name.\n- Show each loan as \"On loan\" or \"Returned\".\n- Mark a loan as returned.\n\n## Changes in every direction\n- **Search:** it gets a real label, and the number of results is announced to screen readers (\"2 of 3 loans\").\n- **Empty search:** shows \"No varieties match 'okra'\" with a button to clear the search.\n- **Return buttons:** each says which loan it returns (\"Mark Lemon cucumber returned\").\n- **Status and dates:** status is always written out, not shown by colour alone. Dates read \"14 Mar 2026\" rather than `2026-03-14`.\n- **Look and accessibility:** I'll drop the current generic pattern (white cards on grey, pills, an indigo button and a tiny footer). Focus will be visible and every control will be usable by keyboard.\n\n**What the directions draw on:**\n- **Seed packets:** the variety name set large, small details printed underneath.\n- **Library date-due slips:** stamped dates in ruled columns.\n- **Circulation ledgers:** dense, readable rows.\n- **The growing-season calendar.**\n\n## A — Circulation Ledger\n*Built on the date-due slip and the circulation ledger, following them closely.*\n- **Scores:** energy 2 (polished, calm), density 3, motion 1 (only feedback when something changes).\n- **Layout:** one ruled ledger with columns for Variety, Borrower, Out and Status. On a phone each row becomes a stacked entry. A short line at the top counts loans out and loans returned.\n- **Look:** variety names in a serif face, dates in a fixed-width font, ink on off-white paper with thin rules. The only colour is the stamp ink.\n- **Signature:** marking a loan returned presses a \"RETURNED · 1 Oct\" ink stamp onto its row.\n- **Avoids:** cards, pills and decoration.\n- **Tradeoff:** the least expressive option. Its character comes almost entirely from type and the stamp.\n\n## B — The Packet Drawer\n*The library as a physical drawer of seed packets.*\n- **Scores:** energy 3 (expressive), density 2, motion 2.\n- **Layout:** each loan is drawn as a seed-packet envelope, split into two groups: \"Out in gardens\" and \"Back in the drawer\". When you mark a loan returned, its packet slides from the first group into the second. This uses a browser-native animation feature, so no new library is needed.\n- **Look:** kraft paper and seed-packet colours, variety names as large display type, the borrower and date set like a packet's small print.\n- **Signature:** the packet moving into the drawer.\n- **Avoids:** a uniform card grid. The two groups are laid out differently because they do different jobs.\n- **Tradeoff:** shows fewer loans per screen, which gets long once there are hundreds.\n\n## C — Season Strip\n*Loans shown across the growing season.*\n- **Scores:** energy 4 (experimental), density 3, motion 3.\n- **Layout:** a March–October ruler with a \"today\" line. Each loan is a bar running from the day it went out, so loans that have been out a long time stand out. Search highlights matching bars and fades the rest. On a phone the ruler turns vertical.\n- **Signature:** you can see at a glance which packets have been out all season.\n- **Tradeoff:** the app doesn't record when a loan was returned, so returned bars have no real end point. Fixing that would mean saving a return date when you mark a loan returned. That's a small change to the data, so it needs your OK. It's also the hardest of the three to make accessible: it needs a list view alongside the chart.\n\n**My recommendation is A** (or A with B's slide into the drawer). Volunteers mostly scan and update loans quickly, which suits a ledger, and the stamp gives it character without slowing anything down.\n\nPick A, B, C or a mix, and tell me whether phone or desktop matters more. If there's a product or page you'd rather it follow, name it and I'll use it as the reference.",
+   "git_status_after": []
+  },
+  {
+   "run": "new2-r2",
+   "text": "text2",
+   "prompt": "Seedkeep needs a major redesign: a whole new look and layout for the app. Go ahead and build it.",
+   "energy": [
+    1,
+    3,
+    4
+   ],
+   "density": [
+    4,
+    2,
+    3
+   ],
+   "motion": [
+    1,
+    2,
+    3
+   ],
+   "fidelity": [
+    "in words: stays close to its sources",
+    "in words: borrows the general idea",
+    "in words: only set the mood"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 3
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "interaction model",
+    "motion",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "Read"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Read"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.25,
+   "reply": "I've read the app (`src/App.jsx`, `src/App.css`). It's one screen: a search box, a grid of white cards on gray, yellow and green status pills, and an indigo \"Return\" button. There's no design system yet. Since the look is completely open, I'll propose three directions for you to pick from before writing any UI code.\n\nI don't have a design-reference tool connected (Refero, Mobbin and 21st.dev aren't available), so I haven't looked at any shipped products. The directions below are based on real objects from a seed library instead. If there's an app or site you'd like Seedkeep to follow, name it and I'll use it.\n\n**What I'm assuming:** the users are volunteers doing a shift at a lending desk, probably on a laptop and sometimes on a phone. The main job is to see what's out, who has it and since when, and record a return quickly. Returning saved seed is the thing the library cares about most.\n\n---\n\n### A — Circulation Ledger (based on real objects)\n*Visual energy 1 · density 4 · motion 1 · stays close to its sources*\n\n- **Sources:** a library book's date-due card (stamped dates, ruled columns), a bound lending ledger (one ruled row per loan, running dates) and an old library card-catalog drawer (labelled index tabs).\n- **What it takes from them:**\n  - Layout: one full-width table of ruled rows instead of a card grid.\n  - Hierarchy: the variety name is the strongest text and dates are in fixed-width digits.\n  - Spacing: tight, even row height.\n  - Interaction: search filters rows in place, and A–Z index tabs jump through varieties.\n  - Motion: almost none; a new stamp just appears.\n  - Look: off-white paper with ruling lines.\n- **Look:** a serif for variety names, fixed-width digits for dates, ink-coloured text, and one red-brown \"overdue\" colour used sparingly.\n- **Signature:** a returned loan gets a dated rubber stamp (\"RETD 14 SEP\") in its row's last column, like a date-due card.\n- **Avoids:** cards, pills, shadows and a hero banner.\n- **Tradeoff:** very efficient but quiet. It looks like a tool rather than something for the community.\n\n### B — Packet Drawer\n*Visual energy 3 · density 2 · motion 2 · borrows the general idea of its sources*\n\n- **Sources:** printed seed packets (big variety name, a coloured band, a sowing-info panel), the wooden drawers seed libraries keep packets in, and kraft envelopes for returned seed.\n- **Layout:** loans are tall packets filed in drawers by status: *Out this season*, *Seed returned*, *Overdue for return*. Each packet's colour band comes from its crop family (tomato, bean, cucurbit…).\n- **Look:** a bold condensed display face for varieties, warm kraft and soil tones, real colour on the packets, and a calm interface around them.\n- **Signature:** clicking \"Return seed\" slides the packet into the *Returned* drawer, and it comes back as a kraft envelope.\n- **Avoids:** identical white cards, indigo buttons and dashboard metrics.\n- **Tradeoff:** it takes more room per loan, so scanning 200 loans is slower than with A.\n\n### C — Season Almanac\n*Visual energy 4 · density 3 · motion 3 · its sources only set the mood*\n\n- **Sources:** a gardener's almanac and sowing calendar (months across the page, crop bars), a garden planting map, and a frost-date chart.\n- **Layout:** a timeline of the growing season from March to October with a \"today\" line. Each loan is a bar running from its loan date to now, grouped by borrower. The return-by date is marked on the timeline. Search highlights bars rather than hiding them. On mobile it becomes a list grouped by month.\n- **Look:** an editorial serif with a small-caps month axis, a green-to-ochre colour shift across the season, and a large almanac-style date at the top.\n- **Signature:** when a loan is returned, its bar ends in a seed mark, so the season fills up with returns as it goes.\n- **Avoids:** the list-and-grid layout entirely.\n- **Tradeoff:** it's the most distinctive and the most work to build, and it's weaker for quickly looking up \"who has X?\" (search still covers that).\n\n---\n\n**Which one: A, B, C, or a mix** (for example, \"A's ledger with B's packet colours\")? Also tell me if you want dark mode, or if anything above about who uses it is wrong. Once you choose, I'll write the plan, check it doesn't fall back to generic defaults, then build it and check it in the browser on mobile and desktop.",
+   "git_status_after": []
+  },
+  {
+   "run": "new3-r1a",
+   "text": "text3",
+   "prompt": "Completely rethink Seedkeep's frontend visual design and UX while preserving its existing functionality.",
+   "energy": [
+    2,
+    1,
+    3
+   ],
+   "density": [
+    2,
+    4,
+    2
+   ],
+   "motion": [
+    2,
+    1,
+    3
+   ],
+   "fidelity": [
+    "high",
+    "medium",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "interaction model",
+    "motion",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "ToolSearch"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Bash"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.27,
+   "reply": "I've read the whole app: `src/App.jsx`, `src/App.css`, `index.html`. A complete rethink leaves the visual direction open, so this repo's frontend process asks you to choose a direction before I write any production code. No reference-research tools (Refero, Mobbin, 21st.dev) are connected, so I didn't look at any shipped products. The references below are real objects from seed libraries and gardening.\n\n## What has to keep working\n- A list of loans, each with variety, borrower, date out, and a returned / on-loan status.\n- Searching by variety name.\n- Marking a loan returned.\n\nWithin that scope I'd also fix some UX gaps: the search has no label, an empty search shows nothing at all, dates show as raw ISO (`2026-03-14`), and the button just says \"Return\" without saying what it does. The README says loans are about whether the borrower **brought saved seed back** at the end of the season. The UI should use that language, not generic \"loan\" language.\n\n## Defaults I'm dropping in every direction\nThe current layout: white header, centred container, white rounded cards on gray, status pills, and an indigo button that has nothing to do with the product.\n\n---\n\n### A: Card catalogue drawer (built on references)\n**Scores:** Energy 2 · Density 2 · Motion 2 · Fidelity high\n**References:** a library book pocket with its date-due slip; a wooden card-catalogue drawer with A–Z index tabs.\n**Adapts:**\n- **Composition:** loans filed as index cards in one drawer, sorted alphabetically by variety, with A–Z tab dividers (catalogue drawer).\n- **Hierarchy:** variety typed at the top of each card, borrower and date in ruled fields below (catalogue card).\n- **Spacing rhythm:** tight ruled lines inside each card, cards stacked with a small offset (drawer).\n- **Interaction model:** search jumps to the matching tab and cards; marking a loan returned adds a stamp to the card's date slip (date-due slip).\n- **Motion:** one rubber-stamp press on return. Nothing else moves.\n- **Visual treatment:** manila and cream card stock, a typewriter-style face for card text, a red or violet stamp ink for status (stamp ink).\n\n**Look:** warm paper tones, a monospace field font, a serif for variety names, square corners.\n**Signature:** a \"SEED RETURNED · 12 OCT 2026\" stamp that lands on the card.\n**Avoids:** skeuomorphic wood grain and drop-shadow kitsch.\n**Tradeoff:** it shows fewer loans per screen than a table, so scanning 200 loans is slower.\n\n### B: Season ledger\n**Scores:** Energy 1 · Density 4 · Motion 1 · Fidelity medium\n**References:** a hand-ruled lending ledger kept at the library desk; a printed seed-exchange yearbook listing; a planting calendar laid out March to October.\n**Look:** one dense ruled table (variety, borrower, out, weeks out, seed back?). Rows are split into \"Still in the ground\" and \"Seed came home\". Tabular figures, one ink colour plus a single muted green.\n**Signature:** a season bar in each row, drawn from the date out to today on a Mar–Oct scale, so overdue loans stand out because their bars are long.\n**Avoids:** cards, pills and decoration of any kind.\n**Tradeoff:** it's the most efficient for volunteers but the least warm, and needs careful reflow on phones (rows become stacked entries).\n\n### C: Seed packet wall\n**Scores:** Energy 3 · Density 2 · Motion 3 · Fidelity low\n**References:** early-1900s lithographed seed packets; the back of a seed envelope with sowing notes; a seed-swap table with packets standing in rows.\n**Look:** each variety is a tall, typographic packet coloured by crop family (nightshade, legume, cucurbit), with a bold condensed display face. Status always has a text label as well as colour.\n**Signature:** marking a loan returned flips the packet to its back, which shows the borrower, the dates, and \"Saved seed returned\" in handwritten-style lettering.\n**Avoids:** illustrations I'd have to fake, gradients, glass effects.\n**Tradeoff:** it's the most memorable and joyful, but has the lowest information density and the most motion to keep accessible (with a reduced-motion fallback).\n\n---\n\n**Which do you want: A, B, C, or a mix** (for example \"B's ledger with A's stamp\")? It would also help to know whether volunteers mostly use this at a desk or on a phone at the library table. If there's a product or page you'd rather A followed instead of the physical catalogue, name it and I'll build A on that. Once you pick, I'll plan, build it, and check it in the browser at phone and desktop widths.",
+   "git_status_after": []
+  },
+  {
+   "run": "new3-r1b",
+   "text": "text3",
+   "prompt": "Completely rethink Seedkeep's frontend visual design and UX while preserving its existing functionality.",
+   "energy": [
+    1,
+    3,
+    4
+   ],
+   "density": [
+    4,
+    2,
+    3
+   ],
+   "motion": [
+    1,
+    3,
+    4
+   ],
+   "fidelity": [
+    "high",
+    "medium",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "interaction model",
+    "motion",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Bash"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.26,
+   "reply": "I looked through the codebase. Seedkeep is one screen in `src/App.jsx`: a list of seed loans, a search by variety, an \"On loan\" or \"Returned\" status on each loan, and a \"Return\" action. It has no design system yet; it uses stock Tailwind-style grays and an indigo button. That makes this a redesign with no direction set, so I have to stop before writing any code and let you choose a direction.\n\nNone of the design-reference tools (Refero, Mobbin, 21st.dev) are connected here, so I didn't look at any shipped products. Each direction below is based on objects seed-library volunteers already handle. If you have a product or page you'd rather it follow, name it and I'll use that instead.\n\n## What the redesign keeps, and what it fixes\n\n**Kept:** the loan list (variety, borrower, date out, status), searching by variety, and marking a loan returned. All three directions keep every one of these.\n\n**Fixed in all three:**\n- **Return button:** it says only \"Return\", which is ambiguous and gives a screen reader no context. It will say \"Mark returned — Cherokee Purple tomato\".\n- **Search:** it has no visible label. It will get one.\n- **Search with no results:** it shows a blank page. It will show a message with a way to clear the search.\n- **Dates:** raw `2026-03-14` will become a readable date plus how long the packet has been out.\n- **Order:** packets still on loan come before returned ones, so volunteers see first what still needs doing.\n\n**Optional, only if you want them:** searching by borrower as well as variety, and an undo after \"Mark returned\".\n\n## The three directions\n\n### A: Circulation slip (reference-led)\n`Energy 1 · Density 4 · Motion 1 · Fidelity high`\n- **References:** a library book's pocket and date-due slip (ruled rows, a stamped date column, borrower written in by hand), and a lending-library loan ledger.\n- **Takes from them:**\n  - **Composition:** the ledger's ruled rows. Each loan is one line, with no cards.\n  - **Hierarchy:** the slip's columns: Variety, Borrower, Out, Status.\n  - **Spacing rhythm:** an even, ruled row height.\n  - **Interaction:** like stamping a slip. \"Mark returned\" stamps RETURNED and the date across that row.\n  - **Motion:** just a short stamp when a packet is returned.\n  - **Visual treatment:** off-white \"manila\" paper, dark ink and one stamp-red. Dates set in monospace.\n- **Look:** a serif for variety names, a sans for everything else. Dense and quiet; the fastest of the three to scan.\n- **Signature:** the date stamp.\n- **Avoids:** cards, pills, shadows, and colour washes.\n- **Tradeoff:** it's the least expressive. On a phone, each table row has to stack into a block.\n\n### B: The packet drawer\n`Energy 3 · Density 2 · Motion 3 · Fidelity medium`\n- **References:** printed heirloom seed envelopes (big variety name, a growing-info block on the back, a coloured band), a library card-catalogue drawer, and dividers in a seed-swap tin.\n- **Layout:** two sections labelled like drawer dividers: \"Out in gardens\" and \"Back in the drawer\". Each loan is drawn as a seed envelope with a flap. Here a card fits, because the packet really is a physical thing.\n- **Look:** a confident display serif for variety names. Each packet gets a muted colour band based on its crop family (tomato, bean, cucurbit). Text always carries the status, never colour alone.\n- **Signature:** when a packet is returned, it slides from \"Out\" into the drawer.\n- **Avoids:** a uniform card grid; the two sections are built differently.\n- **Tradeoff:** it shows fewer loans per screen. The crop-family colours mean adding a small lookup for each variety.\n\n### C: Growing season\n`Energy 4 · Density 3 · Motion 4 · Fidelity low`\n- **References:** a planting calendar (month columns with sow, grow and harvest bars), a gardener's notebook, and a herbarium specimen label.\n- **Layout:** a March–October timeline. Each loan is a bar running from its date out to today, so long-overdue loans are visibly long. Returned loans end with a saved-seed mark. On a phone, the timeline turns into a vertical list of months.\n- **Look:** the specimen label's fine-print serif and botanical greens. It's the most expressive of the three.\n- **Signature:** the season itself is the layout. \"How long has this been out?\" is answered by the length of the bar.\n- **Avoids:** a list of identical items.\n- **Tradeoff:** it's the most to build and the slowest to scan when you need one specific loan. It leans heavily on dates, so loans from a past season would need a decision.\n\n---\n\nPick **A, B, C**, or a mix (for example, \"A's table with B's packet colour bands\"). Two quick questions as well:\n1. Do volunteers mainly use this on a phone at the shelf, or on a laptop at a desk?\n2. Light theme only, or dark too?\n\nOnce you've chosen, I'll write the plan, check it against generic defaults, build it, and review it in the browser on mobile and desktop.",
+   "git_status_after": []
+  },
+  {
+   "run": "new3-r2a",
+   "text": "text3",
+   "prompt": "Seedkeep needs a major redesign: a whole new look and layout for the app. Go ahead and build it.",
+   "energy": [
+    1,
+    3,
+    4
+   ],
+   "density": [
+    4,
+    2,
+    3
+   ],
+   "motion": [
+    1,
+    3,
+    2
+   ],
+   "fidelity": [
+    "high",
+    "medium",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "interaction model",
+    "motion",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "Skill"
+   ],
+   "skills_invoked": [
+    "frontend-quality",
+    "design-brief"
+   ],
+   "design_brief_reached_via": [
+    "Skill"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.25,
+   "reply": "I haven't written any code yet. Seedkeep is a single screen with no visual identity to keep: Tailwind-style grays, an indigo button, white cards on a gray background. Since you asked for a whole new look, the visual direction is wide open, so I need you to pick one before I build.\n\n**No design-reference tools are connected** (Refero, Mobbin and 21st.dev are all unavailable), so I didn't look at any real products. Each direction below is based instead on objects seed-library volunteers already handle. If there's a product or page you'd like one to follow, name it and I'll build from that.\n\n**What I'm working from:** volunteers record which seed packets are out, who has them, since when, and whether the borrower brought saved seed back at the end of the season. The main task is to see what's still out and check returns in quickly. The current data only has a single `returned` true/false field. It doesn't separate \"returned\" from \"brought back saved seed\", which the README treats as the point of the library. I'd add that field in any of the three directions unless you say not to.\n\n---\n\n### A — Circulation ledger (based on the library's own paperwork)\n`Energy 1 · Density 4 · Motion 1 · Fidelity high`\n- **References:** a library circulation ledger (ruled rows, columns for item, borrower and date) and a date-due slip (stamped dates, ink colour showing status).\n- **Adapts:**\n  - **Layout:** the ledger's full-width ruled rows replace the card grid.\n  - **Hierarchy:** the ledger's column order, with variety first and the date last, right-aligned.\n  - **Spacing:** tight ruled lines at the ledger's line height.\n  - **Interaction:** the slip's stamping. Returning a packet stamps the row.\n  - **Motion:** not taken.\n  - **Look:** off-white ledger paper, one ink colour per status, dates in monospace like a date stamp.\n- **Look:** serif headings, monospace dates, high contrast, square corners, hairline rules. Status is shown by a stamped word, not colour alone.\n- **Signature:** a slightly rotated rubber-stamp mark on the row, reading \"RETURNED\" or \"RETURNED · SEED SAVED\".\n- **Avoids:** cards, pills, shadows, gradients.\n- **Tradeoff:** the most efficient for volunteers but the least visually striking. On a phone, rows become stacked entries.\n\n### B — Packet drawer\n`Energy 3 · Density 2 · Motion 3 · Fidelity medium`\n- **References:** printed seed-packet envelopes (variety name in large type, a small block of growing notes, a colour band per crop family) and a card-catalogue drawer (tabbed dividers, items filed standing up).\n- **Look:** each loan is drawn as an envelope with packet-style lettering and a crop-family colour band. Tabbed dividers split On loan / Overdue / Returned. The palette is warm kraft paper with printed inks.\n- **Signature:** checking a packet in slides the envelope back into the \"Returned\" divider.\n- **Avoids:** a uniform grid of identical rectangles. Envelopes vary by crop family and status.\n- **Tradeoff:** fewer loans fit on screen than with A, and the motion takes more work to make accessible (I'd turn it off for anyone with reduced motion set).\n\n### C — Season almanac\n`Energy 4 · Density 3 · Motion 2 · Fidelity low`\n- **References:** a gardener's almanac planting chart (months across, crops down, bars for sowing and harvest windows), a frost-date map, and a germination log notebook.\n- **Look:** the main view is a timeline of the growing season. Each loan is a bar from its checkout date to today, with first-frost and end-of-season lines. Display type is set big, editorial style, with botanical-chart colours.\n- **Signature:** a \"today\" line that moves through the season, so loans running past first frost stand out at a glance.\n- **Avoids:** treating Seedkeep as a list.\n- **Tradeoff:** it needs data the app doesn't have yet (season and frost dates, expected return dates). It's also the hardest to fit on a phone, where it falls back to a list grouped by month.\n\n---\n\n**Pick A, B, C, or a mix** (for example, \"A's ledger with B's crop-family bands\"). Tell me as well whether volunteers mostly use this on a phone or at a desk. Once you've chosen, I'll write a short plan, check it against generic defaults, build it, and screenshot it at phone and desktop sizes before calling it done.",
+   "git_status_after": []
+  },
+  {
+   "run": "new3-r2b",
+   "text": "text3",
+   "prompt": "Seedkeep needs a major redesign: a whole new look and layout for the app. Go ahead and build it.",
+   "energy": [
+    2,
+    3,
+    4
+   ],
+   "density": [
+    4,
+    2,
+    3
+   ],
+   "motion": [
+    1,
+    2,
+    3
+   ],
+   "fidelity": [
+    "high",
+    "medium",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "interaction model",
+    "motion",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Bash"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.25,
+   "reply": "I haven't written any code yet. \"A whole new look\" leaves the visual direction open, so I need you to pick one before I build. No screen-reference or component-research tools are connected here, so I didn't look at any shipped products. The three directions below are based on things a seed library already uses: seed packets, library due-date slips and gardening almanacs.\n\n**What I'm working from:** Seedkeep today is one screen of white cards on a gray background with a purple button. Each loan records the variety, the borrower, the date it went out, and whether saved seed came back. The people using it are volunteers at a check-out desk, and the main job is \"who has what, and what is still due back.\"\n\n---\n\n### A: The circulation desk\n`Energy 2 · Density 4 · Motion 1 · Fidelity high`\n\n- **Based on:** (1) a library pocket card and date-due slip; (2) a ruled lending ledger.\n- **What it takes from those:**\n  - **Layout:** a single ruled ledger replaces the card grid (from the ledger).\n  - **Hierarchy:** the variety name comes first, then the borrower, with the date stamped in the margin (from the due-date slip).\n  - **Spacing:** a tight baseline-ruled rhythm, about 40px per row (from the ledger).\n  - **Interaction:** \"Seed returned\" works like stamping a slip; the row stays visible in a \"back on the shelf\" state (from the slip).\n  - **Motion:** not taken.\n  - **Look:** cream paper, dark ink, a typewriter-style face for dates, and one red stamp ink for anything outstanding (from the slip).\n- **Look and feel:** a serif for variety names, a monospace face for dates, and almost no rounded shapes. The layout is dense, built for scanning a long list at the desk. Status is shown by both a stamp word and its colour, never colour alone.\n- **Signature:** the \"RETURNED\" date stamp, set slightly rotated in the row's margin.\n- **Avoids:** cards, pills, shadows and a dashboard header.\n- **Tradeoff:** it's the least showy option. It's mostly typography and rules.\n\n### B: The seed drawer\n`Energy 3 · Density 2 · Motion 2 · Fidelity medium`\n\n- **Based on:** printed heirloom seed packets (illustration panel, variety in display type, sowing notes on the back) and a wooden index-card drawer.\n- **Look and feel:** each loan is a packet-shaped object with a colour band chosen by crop family (nightshades, legumes, cucurbits). Packets sit in drawer rows grouped by status: \"Out in gardens\", \"Seed came home\". A bold display serif sits against kraft-paper and ink tones.\n- **Signature:** a packet's back shows its loan history, and marking it returned files it into the \"came home\" drawer with a short slide.\n- **Avoids:** a uniform card grid. Packets differ by family, and the two drawers differ in density.\n- **Tradeoff:** less information fits on screen, and it needs a crop-family field added to each loan.\n\n### C: The season almanac\n`Energy 4 · Density 3 · Motion 3 · Fidelity low`\n\n- **Based on:** a gardener's almanac, a planting calendar wheel, and a seed-saving chart.\n- **Look and feel:** the main view is a timeline of the season from March to October. Each loan is a bar from the date it went out to when seed is expected back, and a \"today\" line moves across it. Unreturned loans past harvest time stand out. Large almanac-style month headings, and the colours shift with the season along the axis.\n- **Signature:** a \"what's due back this month\" view that follows the season.\n- **Avoids:** a list as the main view. The list becomes a secondary tab.\n- **Tradeoff:** it's the most ambitious option. It needs an expected-return date (or a rule like \"end of season\") and needs real work on mobile, where the timeline turns vertical.\n\n---\n\n**Which do you want: A, B, C, or a mix** (for example, \"A's ledger with B's crop-family colour\")? If there's a real app or site you'd like it to resemble, name it and I'll use that as the reference instead.\n\nAfter you choose, I'll write a short plan and check it against generic dashboard defaults. Then I'll build it, render it at about 375px and 1280px, run a visual review and an accessibility pass, and fix what they find.",
+   "git_status_after": []
+  },
+  {
+   "run": "new-t1",
+   "text": "text1",
+   "prompt": "The footer copyright text is too small to read. Bump it to 14px.",
+   "diff": [
+    "-.footer small { font-size: 11px; color: #6b7280; }",
+    "+.footer small { font-size: 14px; color: #6b7280; }"
+   ],
+   "tool_sequence": [
+    "Bash",
+    "Read",
+    "Edit"
+   ],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [
+    "App.css"
+   ],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.12,
+   "git_status_after": [
+    " M src/App.css"
+   ]
+  },
+  {
+   "run": "new-t2",
+   "text": "text1",
+   "prompt": "The button on each loan says 'Return'. Change its label to 'Mark returned'.",
+   "diff": [
+    "-{!l.returned && <button onClick={() => markReturned(l.id)}>Return</button>}",
+    "+{!l.returned && <button onClick={() => markReturned(l.id)}>Mark returned</button>}"
+   ],
+   "tool_sequence": [
+    "Bash",
+    "Edit"
+   ],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [
+    "App.jsx"
+   ],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.1,
+   "git_status_after": [
+    " M src/App.jsx"
+   ]
+  },
+  {
+   "run": "new3-t1",
+   "text": "text3",
+   "prompt": "The footer copyright text is too small to read. Bump it to 14px.",
+   "diff": [
+    "-.footer small { font-size: 11px; color: #6b7280; }",
+    "+.footer small { font-size: 14px; color: #6b7280; }"
+   ],
+   "tool_sequence": [
+    "Bash",
+    "Bash",
+    "Read",
+    "Edit"
+   ],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [
+    "App.css"
+   ],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.13,
+   "git_status_after": [
+    " M src/App.css"
+   ]
+  },
+  {
+   "run": "new3-t2",
+   "text": "text3",
+   "prompt": "The button on each loan says 'Return'. Change its label to 'Mark returned'.",
+   "diff": [
+    "-{!l.returned && <button onClick={() => markReturned(l.id)}>Return</button>}",
+    "+{!l.returned && <button onClick={() => markReturned(l.id)}>Mark returned</button>}"
+   ],
+   "tool_sequence": [
+    "Bash",
+    "Read",
+    "Bash",
+    "Edit"
+   ],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [
+    "App.jsx"
+   ],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.13,
+   "git_status_after": [
+    " M src/App.jsx"
+   ]
+  },
+  {
+   "run": "p-r1",
+   "text": "final",
+   "prompt": "Completely rethink Seedkeep's frontend visual design and UX while preserving its existing functionality.",
+   "energy": [
+    1,
+    2,
+    3
+   ],
+   "density": [
+    4,
+    2,
+    2
+   ],
+   "motion": [
+    1,
+    2,
+    3
+   ],
+   "fidelity": [
+    "low",
+    "high",
+    "medium"
+   ],
+   "reference_led": {
+    "direction": "B",
+    "references": 1
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "interaction model",
+    "motion",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "Skill"
+   ],
+   "skills_invoked": [
+    "frontend-quality",
+    "design-brief"
+   ],
+   "design_brief_reached_via": [
+    "Skill"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.27,
+   "reply": "I've read the whole app. It's small: one screen listing seed loans, a search box that filters by variety, an \"On loan\"/\"Returned\" pill, and a \"Return\" button that marks a loan returned. All of that stays in the redesign. The direction is open, so before writing any code I'm proposing three directions for you to pick from.\n\n**Research note:** I don't have a reference tool connected (no Refero, Mobbin or 21st.dev), so I didn't inspect any shipped products. The directions are based on things seed-library volunteers already handle:\n- library date-due cards and book pockets\n- seed packets\n- card-catalogue drawers\n- sowing calendars\n\nIf there's a real product or page you'd rather one of them follow, name it.\n\n**Fixes I'll make whichever direction you pick:**\n- **Search label:** the search box has a placeholder but no label.\n- **Button wording:** \"Return\" is unclear; it becomes \"Mark seed returned\".\n- **No empty state:** a search with no matches currently shows nothing.\n- **Plain dates:** dates are raw ISO with no sense of how long a packet has been out.\n- **Status shown by colour:** the pill's text is fine today, but I'll keep it that way.\n- **Generic look:** grey background, white cards and an indigo button.\n\n---\n\n### A — Circulation desk ledger\n`Energy 1 · Density 4 · Motion 1 · Fidelity low`\n\n- **References:** a library circulation ledger (ruled columns, one row per transaction) and a sowing calendar (month columns, so the season has a shape).\n- **Visual character:** a full-width ruled table instead of cards, with columns for variety, borrower, date out, days out and status.\n  - Loans still out sort to the top, oldest first; returned loans collapse into a quieter section below.\n  - The search box sits in the ledger header with a live count, like \"2 of 3 packets out\".\n  - Serif for variety names, tabular figures for dates, near-monochrome ink on warm off-white with one ink colour for actions.\n- **Signature:** a \"days out\" column with a small bar against the season (Mar–Oct), so overdue loans stand out by length, not just colour.\n- **Avoids:** cards, pills, shadows, decoration.\n- **Tradeoff:** fastest for volunteers at a desk, but plain. On phones the table turns into stacked rows and loses some of the ledger feel.\n\n### B — Date-due card *(reference-led)*\n`Energy 2 · Density 2 · Motion 2 · Fidelity high`\n\n- **References:** the library book pocket and date-due card (a manila card with the title on top and ruled lines of borrower and stamped date).\n- **Adapts:**\n  - **Composition:** each loan is a date-due card: variety as the title, a ruled line with the borrower, and a date stamp.\n  - **Hierarchy:** title, then borrower line, then stamp, in the card's own order.\n  - **Spacing rhythm:** ruled-line spacing sets the vertical rhythm.\n  - **Interaction model:** returning a loan *stamps* the card \"SEED RETURNED · 1 OCT\" in rubber-stamp red, and the card files itself into a \"Returned\" drawer below.\n  - **Motion:** one short stamp press on return, nothing else (turned off for reduced motion).\n  - **Visual treatment:** manila and kraft surfaces, typewriter-style mono for dates, a slightly rotated stamp mark.\n- **Signature:** the return stamp.\n- **Avoids:** a generic card grid (the cards are ruled documents, not white boxes), gradients, icons everywhere.\n- **Tradeoff:** charming and clear, but each card takes more space than a ledger row. It's fine at the library's scale, but would get long with hundreds of loans.\n\n### C — Season board\n`Energy 3 · Density 2 · Motion 3 · Fidelity medium`\n\n- **References:** seed packets (bold variety names, a colour per crop family), a sowing calendar, and a card-catalogue drawer.\n- **Visual character:** loans are placed as small seed-packet tiles on a horizontal Mar–Oct season timeline, by the date they went out.\n  - Packet colour comes from the crop family (nightshades, legumes, cucurbits), always shown with a text label.\n  - Returned packets drop into a \"saved seed\" drawer row at the bottom with a count.\n  - Search dims the packets that don't match instead of removing them, so the season keeps its shape.\n  - On mobile, the timeline becomes a vertical month list.\n- **Signature:** the whole season visible at a glance as a packet timeline.\n- **Avoids:** tables, uniform grids, a flat single accent.\n- **Tradeoff:** the most memorable and the most work. It's less efficient for \"find R. Okafor's loan and mark it returned\" than A. It also adds a crop-family field to the sample data, which is display-only.\n\n---\n\n**Which do you want: A, B, C, or a mix** (e.g. \"A's ledger layout with B's return stamp\")? Or say \"you choose\" and I'll pick and note why. I'll do the build and the browser checks at phone and desktop widths once you've chosen.",
+   "git_status_after": []
+  },
+  {
+   "run": "p-r1-ref",
+   "text": "final",
+   "prompt": "Go with the reference-led direction. Write the plan, and stop before changing any files: I'll approve the plan before you build.",
+   "resumes": "p-r1",
+   "choice": "B, the reference-led direction (Energy 2)",
+   "answers_questions_1_to_5": true,
+   "answers_questions_6_to_11": true,
+   "adapted_aspects": "all six restated as rules; paper texture left out, for readability",
+   "tool_sequence": [],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.38,
+   "reply": "# Plan: Seedkeep redesign, direction B \"Date-due card\"\n\nI haven't changed any files. Each loan becomes a library date-due card. Marking a loan returned stamps the card and files it into a drawer below.\n\n## What stays exactly as it is\n- **Same sample data:** the three loans and their fields.\n- **Same search:** case-insensitive, filters on the variety name.\n- **Same status:** each loan is either on loan or returned.\n- **Same action:** a loan that's out can be marked returned, and it can't be undone (same as now). No new libraries; only `src/App.jsx`, `src/App.css` and `index.html` change.\n\n**One data change for you to approve:** marking a loan returned will also save today's date, so the stamp can read \"SEED RETURNED · 1 OCT\". The Dragon tongue bean loan is already returned in the sample data with no date, so its stamp will just say \"SEED RETURNED\". If you'd rather not touch the data, every stamp goes undated.\n\n## The reference as rules\nThe reference is the library book pocket with its date-due card.\n\n| What | What gets taken |\n|---|---|\n| Layout | Each loan is a manila card: variety as the title, then a ruled table headed **DATE OUT · BORROWER** with one stamped row. |\n| Reading order | Title (serif), then the date (typewriter-style), then the borrower (handwritten-ledger feel, set in the serif in italics). |\n| Spacing | All vertical spacing follows the card's ruled-line height (28px). Blue rules, like a real index card. |\n| Interaction | \"Mark seed returned\" stamps the card in red, rotated −6°. The card then moves into the **Returned** drawer. |\n| Motion | One stamp press (about 180ms) and one move into the drawer (using the browser's View Transitions where supported, otherwise instant). Nothing else animates. Both are off when reduced motion is set. |\n| Look | Manila cards on an oatmeal paper background, a pocket-coloured top edge, blue rules, typewriter dates, a red stamp. |\n\n**Deliberately not copied:** worn-paper textures, fake coffee rings, skeuomorphic shadows, handwriting fonts (hard to read).\n\n## Page structure (top to bottom, each section shaped differently)\n1. **Desk header (not a white bar):**\n   - Wordmark \"Seedkeep\" with the line \"Seed library loans · 2026 season\".\n   - A typewriter-style count: \"2 packets out · 1 returned\".\n2. **Search:**\n   - A visible label, \"Find a variety\", on a ruled input.\n   - A live result count for screen readers.\n3. **On loan:** full date-due cards, oldest first, each showing \"202 days out\".\n   - The button is an outlined ink button, \"Mark seed returned\", on its own line at the bottom of the card.\n   - Mobile: one column. Desktop: 2–3 columns of portrait cards.\n4. **Returned drawer:** a different shape from the cards above.\n   - A card-catalogue drawer where only the top tab of each filed card shows: variety name, a small red stamp, the date.\n   - Dense, horizontal and quieter.\n5. **Footer:** \"© 2026 Seedkeep volunteers\", with readable contrast (fixes the current 11px grey).\n\n**Empty states:**\n- **Search with no match:** \"No variety matches 'xyz'\", with a \"Clear search\" button.\n- **Nothing on loan:** \"Every packet is home.\"\n- **Empty drawer:** \"Returned cards are filed here.\"\n\n## Accessibility\n- **Structure:** proper landmarks (`header`, `main`, `footer`). Each section has a real heading (`h2`), and each card is an `article` with the variety as its `h3`.\n- **Status as text, not just colour:** the stamp itself is text (\"Seed returned\"), and on-loan cards say \"On loan\" in words.\n- **After returning a loan:**\n  - Focus moves to that card's tab in the drawer, so keyboard users aren't left on a button that no longer exists.\n  - A screen-reader message announces \"Cherokee Purple tomato marked returned.\"\n- **Focus and targets:** a visible 2px ink focus ring with offset, and buttons and the input are at least 44px tall.\n- **Contrast:** I'll check muted text and the red stamp against manila in the build, aiming for at least 4.5:1.\n\n## Design tokens (CSS variables)\n- **Colours:**\n  - `--desk` #F3EEE2, `--card` #F1E3BE, `--card-edge` #D8C38C, `--rule` #9DB4C8\n  - `--ink` #2A2620, `--ink-muted` #5A5045, `--stamp` #A8231B, `--focus` = ink\n- **Fonts:** serif for headings (\"Iowan Old Style\", Palatino, Georgia). Typewriter-style mono for dates (\"American Typewriter\", \"Courier New\", monospace). System sans for buttons and labels. No web fonts.\n- **Spacing:** based on the 28px ruled line (4 / 8 / 14 / 28 / 56).\n- **Shape:** corners 3px on cards and 2px on inputs and buttons. Card shadow is a single 1px edge line, no blur.\n- **Motion timing:** 180ms stamp, 260ms move into the drawer.\n\n## Checks against generic looks\n1. **Would it read as a library without the logo?** Yes. Ruled date-due cards, a filing drawer and a rubber stamp all say \"library\".\n2. **Choices specific to Seedkeep:**\n   - the date-out/borrower ruled table\n   - the red return stamp\n   - the card-catalogue drawer for returned loans\n   - typewriter \"days out\" counts\n3. **Biggest risk:** sliding back into a uniform card grid on a grey background. The guard against it is that cards are ruled documents, not white boxes, and the drawer is shaped completely differently.\n4. **Leftovers from the current look removed:** the centred white header, white cards on grey, pills, the indigo button. No gradients or glass effects.\n5. **Each section has its own shape:** header (typography), cards (documents), drawer (dense tabs). None repeats another.\n\n**Where the eye goes:**\n- **Focal point:** the oldest card still out.\n- **Reading order:** first the count in the header, then the oldest card's title and its \"days out\", then the stamped drawer.\n- **What changes as you work:** cards leave the top section and the drawer fills up, so the page shows the season's progress.\n- **Memorable moment:** the stamp landing.\n- **Strongest contrast:** the red stamps against manila in the drawer.\n- **Compared with the reference:** it doesn't lose any of the reference's strengths. Texture is left out on purpose, for readability.\n\n## How I'll check the build\n1. Run `npm run dev`. In a real browser, take screenshots at 375px and 1280px in four states: default, after a search, with no search results, and after marking a loan returned.\n2. Walk the page with Tab only, watching the focus ring.\n3. Test with reduced motion turned on.\n4. Get an independent visual review of the screenshots.\n5. Fix what it finds and take the screenshots again.\n6. Run `npm run build`.\n\nBrowser screenshots are kept out of git through `.git/info/exclude`.\n\n**To approve:** say go. Also tell me whether to save the return date (recommended) or keep every stamp undated.",
+   "git_status_after": []
+  },
+  {
+   "run": "p-r1-res",
+   "text": "final",
+   "prompt": "Go with the most restrained of the three directions. Write the plan, and stop before changing any files: I'll approve the plan before you build.",
+   "resumes": "p-r1",
+   "choice": "A, the most restrained (Energy 1)",
+   "answers_questions_1_to_5": true,
+   "answers_questions_6_to_11": true,
+   "keeps_chosen_energy": "yes: 'It's deliberately flat, which is what A promised.'",
+   "tool_sequence": [],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.39,
+   "reply": "# Plan: Seedkeep redesign, direction A (Circulation desk ledger)\n\nI picked A because it was the most restrained of the three (`Energy 1 · Density 4 · Motion 1 · Fidelity low`). I haven't changed any files. I won't create a `DESIGN-BRIEF.md`, since this is a single screen finished in one go.\n\n## What stays exactly the same\n- The three sample loans, their fields, and the state held in `App`.\n- Search filters by **variety only** and ignores case, as it does now.\n- Marking a loan returned sets `returned: true`. There's still no way to undo it.\n- The footer line \"© 2026 Seedkeep volunteers\".\n- No new dependencies. Only `src/App.jsx` and `src/App.css` change.\n\n## Page structure (top to bottom)\n1. **Masthead** (no separate white header bar)\n   - Left: the \"Seedkeep\" wordmark in serif small caps, with \"Lending ledger · 2026 season\" underneath.\n   - Right: a plain-text count, e.g. \"2 packets out · 1 seed returned\".\n2. **Search row** at the top of the ledger\n   - A visible label \"Search varieties\" and a `type=\"search\"` input.\n   - A live result count (\"Showing 1 of 3 varieties\"), announced to screen readers.\n3. **\"On loan\" section**: a heading plus a ruled `<table>` with these columns:\n   - **Variety**, in serif.\n   - **Borrower**.\n   - **Out since**, shown as \"14 Mar 2026\" in tabular figures.\n   - **Days out**, a number plus the season bar described below.\n   - **Action**: a \"Mark seed returned\" button, labelled with the variety for screen readers (e.g. \"Mark Cherokee Purple tomato seed returned\").\n   - Rows are sorted oldest first.\n4. **\"Seed returned\" section**: a quieter version of the same table in a `<details open>`.\n   - The summary reads \"Seed returned (1)\".\n   - Variety, borrower and out since are shown in muted ink.\n   - The status reads \"Seed returned\" in words. Days out shows \"—\" because the data has no return date, and I won't invent one.\n5. **Empty states**\n   - Search with no matches: \"No variety matches 'okra'.\" plus a \"Clear search\" button.\n   - A section with nothing in it shows one muted line, e.g. \"Nothing on loan right now.\"\n6. **Footer**: unchanged text, left-aligned in muted ink.\n\n## The signature: days out against the season\n- Days out is worked out from today's date.\n- Next to the number, a thin bar shows how far through the Mar–Oct season the loan has run. It's capped at full and uses ink on a ruled track.\n- It doesn't claim anything is \"overdue\", because the data has no due dates. It's just length, and the number is always shown, so the bar never stands alone.\n\n## After you click \"Mark seed returned\"\n- The row moves to the \"Seed returned\" section, with no animation.\n- Screen readers hear \"Cherokee Purple tomato marked as seed returned.\"\n- Focus moves to the next \"Mark seed returned\" button. If there are none left, it goes to the \"Seed returned\" summary, so keyboard users never lose their place.\n\n## Tokens (CSS custom properties in `App.css`)\n- **Colours**\n  - `--paper` `#f7f4ec` (background)\n  - `--rule` `#d6cfbd` (ruled lines)\n  - `--ink` `#1f1d18` (text)\n  - `--ink-muted` `#5c574b` (secondary text)\n  - `--action` `#1d4d3a` (buttons; a deep green ink)\n  - `--action-ink` `#ffffff`\n  - `--focus` (same as `--action`; 2px outline, offset 2px)\n  - I'll check contrast in the browser. Both text inks are planned at 4.5:1 or better on paper.\n- **Type**\n  - Variety names and wordmark: a system serif stack (Iowan Old Style, Charter, Georgia), with no web font to load.\n  - Everything else: `system-ui`.\n  - Dates and day counts: `font-variant-numeric: tabular-nums`.\n  - Three sizes only: wordmark, section heading, body.\n- **Spacing**: 4 / 8 / 12 / 16 / 24 / 40.\n- **Surfaces**: 1px rules instead of cards. No shadows. 0 radius on the ledger, 3px on the input and buttons. Hover is a colour change only, and nothing moves.\n\n## Responsive behaviour\n- **Desktop:** the ledger is left-aligned and up to about 1120px wide, so it reads as a ledger rather than a centred box of cards.\n- **Below about 640px:** each row becomes a stacked block.\n  - Variety on top, then \"Borrower · Out since\".\n  - Then days out with its bar, then a full-width button at least 44px tall.\n  - Table roles are set explicitly so screen readers still treat it as a table when CSS changes how rows display.\n\n## Pre-build check\n1. **Does it still look like a seed library without the name?** Yes: ruled loan columns with \"out since / days out\" against a season bar.\n2. **Choices specific to Seedkeep:**\n   - The bar measures the growing season (Mar–Oct), not a generic progress meter.\n   - The status wording is \"Seed returned\", the library's own term.\n   - Serif variety names in a ledger, with tabular dates.\n   - Loans still out come first, oldest at the top.\n3. **Generic defaults most at risk:** a coloured status pill, coloured row tinting, and a header bar over a centred container. I'm dropping all three.\n4. **Drift check:** no cards on grey, no repeated grid, no hero, no decorative metrics, no gradients, no purple. The counts are real numbers from the data.\n5. **Each section has its own structure:** the masthead is typographic, search is a form row, \"On loan\" is a full ledger, and \"Seed returned\" is a muted collapsible ledger.\n\n## Visual-energy check\n- **What you look at first:** the variety of the oldest loan still out, and its days-out bar.\n- **Reading order:** the oldest long-running loans, then the search and count, then the returned section.\n- **What changes as you use it:** loans leave the active ledger and the counts update.\n- **Most memorable interaction:** the returned row moving to the other section, with focus carried to the next one.\n- **Strongest contrast:** the dark-ink action column against the paper ledger.\n- **Is it flatter than the direction?** It's deliberately flat, which is what A promised. Nothing richer is being given up.\n\n## How I'll check it\n- **Run it:** `npm install` and `npm run dev`, the README's command. I'll also confirm `npm run build` passes.\n- **Screenshots:** Playwright at 375px, 768px and 1280px.\n- **Behaviour:**\n  - Search that matches, partly matches, and matches nothing.\n  - Clear search.\n  - Mark every loan returned, including the \"Nothing on loan right now\" state.\n  - Walk the page with the Tab key to confirm focus is always visible and lands in the right place after a return.\n  - Check contrast and zoom to 200%.\n- **Reviews:**\n  - Fix what I find and take new screenshots.\n  - `visual-design-judge` on the final screenshots.\n  - A short correctness review of the return-and-focus logic.\n- **Screenshots stay out of git:** I'll add `.playwright-mcp/` to `.git/info/exclude`.\n\n## Optional extras (not in the plan unless you say so)\n- Search by borrower as well as variety.\n- Undo for \"Mark seed returned\".\n- Recording the date seed came back, which would give returned rows a real days-out figure.\n- Adding `eslint-plugin-jsx-a11y`; the project has no linter yet.\n\nIf you approve, I'll build exactly this.",
+   "git_status_after": []
+  },
+  {
+   "run": "p-r2",
+   "text": "final",
+   "prompt": "Seedkeep needs a major redesign: a whole new look and layout for the app. Go ahead and build it.",
+   "energy": [
+    1,
+    3,
+    4
+   ],
+   "density": [
+    4,
+    2,
+    2
+   ],
+   "motion": [
+    1,
+    2,
+    3
+   ],
+   "fidelity": [
+    "high",
+    "medium",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "interaction model",
+    "motion",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [
+    "Bash"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.24,
+   "reply": "I haven't written any code yet. The visual direction for a redesign is open, so you should pick it before I build. I didn't have a reference search tool, so I didn't look at any real products. The directions below draw on objects seed-library volunteers already handle: seed packets, library due-date slips, card catalogues and planting calendars.\n\n**What I found:** Seedkeep is one screen (`src/App.jsx`). It's a search box over a grid of white cards on grey, with a pill and an indigo \"Return\" button on each card. Each loan has a variety, a borrower, a date out and a returned flag. One thing to note: the README says volunteers track whether the borrower *brought back saved seed at the end of the season*, but the app only has a single \"Returned\" flag. All three directions below show that season-end return properly. Since today is 1 October, most loans are coming due now.\n\n---\n\n### A: Circulation ledger (based on the library due-date slip and card catalogue)\n`Energy 1 · Density 4 · Motion 1 · Fidelity high`\n- **References:** a library book's due-date slip (a dated row for each lending event, with stamped returns), and a card-catalogue drawer (alphabetical tabs and a compact entry per item).\n- **Borrows:**\n  - **Layout:** a full-width ruled ledger with one row per loan, filed under A–Z variety tabs (from the catalogue drawer).\n  - **Priority:** variety first, then borrower, then date (as on the slip).\n  - **Spacing:** tight, even rows on a fixed baseline.\n  - **Interaction:** a \"Record saved seed\" action stamps the row, keyboard-first, with a filter by tab.\n  - **Motion:** none.\n  - **Look:** off-white paper with a typewriter-style monospace for dates.\n- **Look:** a serif for varieties, a monospace for dates, nearly black on paper, and one ink-red colour used only for the \"returned\" stamp.\n- **Signature:** a returned loan gets an inked date stamp, angled slightly, like a library return stamp.\n- **Avoids:** cards, pills, shadows, a hero area.\n- **Tradeoff:** very practical but plain, and it reads more like an archive than a garden.\n\n### B: Packet shelf\n`Energy 3 · Density 2 · Motion 2 · Fidelity medium`\n- **References:** heirloom seed packets (a big variety name, a crop illustration, a sow-by line), and the shelf of packets in a seed-library box.\n- **Look:** each loan is a packet-shaped object with a folded top flap. Paper colour follows the crop family (nightshades, legumes, cucurbits). The type is a condensed display face for the varieties.\n- **Signature:** when saved seed comes back, the packet visibly fills and slides back onto the \"in the library\" shelf.\n- **Avoids:** generic rounded cards, and the same accent colour everywhere.\n- **Tradeoff:** fewer loans fit on screen, so scanning 200 loans is slower than in A.\n\n### C: Season wheel\n`Energy 4 · Density 2 · Motion 3 · Fidelity low`\n- **References:** a planting calendar (sow, grow and harvest bands by month), and a seed-saving almanac.\n- **Layout:** the main view is the growing season, March to October. Each loan is a line running from its date out towards the season-end due date, and a \"today\" marker (1 Oct) shows what's coming due. A searchable list sits under it on mobile.\n- **Signature:** loans that still owe seed gather at the season's edge as it closes, so the volunteers' end-of-season job is visible at a glance.\n- **Avoids:** a plain list or grid as the main view.\n- **Tradeoff:** most expressive and most work to build, and harder to make fully accessible (it needs a matching table view).\n\n---\n\nPick **A, B or C**, or a mix (for example \"A's ledger with B's crop-family colours\"). If you have a real product or site you'd like it to follow, name it and I'll base the direction on that. Once you've chosen, I'll write a short plan, then build and check it at mobile and desktop widths.",
+   "git_status_after": []
+  },
+  {
+   "run": "p-r2-ref",
+   "text": "final",
+   "prompt": "Go with the reference-led direction. Write the plan, and stop before changing any files: I'll approve the plan before you build.",
+   "resumes": "p-r2",
+   "choice": "A, the reference-led direction, which was also the most restrained (Energy 1)",
+   "answers_questions_1_to_5": true,
+   "answers_questions_6_to_11": "yes, 6 and 7 answered together",
+   "adapted_aspects": "layout, order, spacing, interaction and look kept; motion was 'not taken' in the proposal",
+   "tool_sequence": [],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.34,
+   "reply": "# Plan: Seedkeep circulation ledger (direction A)\n\n**Chosen direction:** A, the circulation ledger. `Energy 1 · Density 4 · Motion 1 · Fidelity high`. It's based on a library due-date slip and a card-catalogue drawer. No real products were inspected.\n\n**Files touched:** only `src/App.jsx` and `src/App.css`. No new dependencies or fonts, and no change to `index.html`.\n\n## The references become rules\n\n| Reference | Governs | Rule in this build |\n|---|---|---|\n| Card-catalogue drawer | Layout, navigation | Loans are filed under letter dividers (A–Z by variety). A strip of A–Z tabs jumps to each divider. Letters with no loans are shown greyed out and can't be tabbed to. |\n| Due-date slip | Order of information, rows | One ruled row per loan: variety, borrower, date out, seed back. Dates are in typewriter-style monospace (`14 MAR 2026`). |\n| Library return stamp | Returned status, the one strong colour | When saved seed comes back, the row gets a red stamp, `SEED RETURNED · 01 OCT 2026`, tilted about 2°. Red is used for nothing else. |\n| Deliberately not copied | | No slip-card borders, no cute catalogue-drawer illustrations, no hole-punch decoration. Only the structure carries over. |\n\n## Data change (small, needed for the stamp)\n`returned: boolean` becomes `seedReturnedOn: \"YYYY-MM-DD\" | null`. The stamp shows the actual date the seed came back, and the column now records saved seed coming back, as the README describes. Clicking **Record saved seed** fills in today's date. The three sample loans stay as they are; Dragon tongue bean gets a plausible return date.\n\n## Layout, top to bottom\n1. **Header strip:** \"Seedkeep\" in serif, followed by \"Seed library · circulation ledger · 2026 season\" in small-caps monospace. It sits on the paper background with a double rule underneath, like a ledger's top line. Not a white app bar.\n2. **Search and summary:** a labelled field, *Find a variety*, styled as a single underline rather than a box. Next to it is one plain line of real counts: \"2 owe seed · 1 returned\". No coloured metric tiles.\n3. **A–Z tab strip:** sticky under the header on desktop. On mobile it becomes a single row you can scroll sideways, with tap targets of at least 40px.\n4. **The ledger:** a real `<table>` with one group of rows per letter. Each group has a letter divider (`<th scope=\"rowgroup\">`) with an id the tabs jump to. Columns are Variety (serif, 18px), Borrower, Out (monospace), and Seed back (the stamp or the button).\n   - **At about 375px:** each row becomes a stacked block: the variety, then \"borrower · out date\", then the stamp or button. Changing a table's CSS display can strip its meaning for screen readers, so explicit ARIA roles keep it readable as a table.\n5. **No results:** \"No variety matches 'xyz'.\" with a **Clear search** button. Letter groups with no matches are hidden.\n6. **Footer:** the existing \"© 2026 Seedkeep volunteers\" line, set in small monospace under a closing rule.\n\n## Design values (CSS variables in `App.css`)\n- **Colours:**\n  - `--paper` `#f6f1e4`\n  - `--rule` `#d6ccb4`\n  - `--ink` `#1d1b16`\n  - `--ink-muted` `#5a5345` (checked at 4.5:1 or better on paper)\n  - `--stamp` `#a3262a` (also checked at 4.5:1 or better)\n  - The focus outline is 2px ink with a 2px gap.\n- **Type:** text fonts are a built-in serif stack (`Iowan Old Style, Palatino, Georgia, serif`) and a built-in monospace stack (`ui-monospace, Menlo, Consolas, monospace`). Sizes:\n  - Masthead: 28px\n  - Variety: 18px\n  - Body: 15px\n  - Labels: 12px small caps\n- **Spacing:** an 8px base, with rows on a fixed 48px rhythm on desktop.\n- **Radius and shadows:** 0 radius and no shadows anywhere. The **Record saved seed** button has an ink outline and fills with ink on hover or focus.\n- **Motion:** none. Changes appear instantly, and focus stays visible.\n\n## Pre-build check\n1. *Without the logo, does it still look like this domain?* Yes. A ledger filed by letter, with library-style return stamps, says \"lending library\" without the name.\n2. *What's specific to this product:* the catalogue letter dividers, the dated stamp for saved seed coming back, the slip-style row order, and the monospace dates.\n3. *Biggest risk of looking generic:* falling back to a centred container on a grey page, a boxed search input, and a plain styled table.\n4. *Generic patterns cut:* white cards on grey, pills, the indigo button, rounded corners and shadows.\n5. *Each section built for its job:* the header names the ledger, the tabs handle navigation, and the table holds the records. Each has its own structure rather than one repeated card.\n6–7. *Where the eye goes:* first the red stamps, the only colour on the page. Then the variety names. Then the outlined **Record saved seed** buttons, which is the work still to do.\n8. *What changes as volunteers work:* the ledger fills with stamps through the season.\n9. *Most memorable interaction:* pressing **Record saved seed** and the stamp appearing with today's date.\n10. *Strongest contrast:* red stamp against cream paper.\n11. *Flatter than the references?* No. Direction A is restrained on purpose, and the stamp is its one expressive move.\n\n## How I'll check it\n- Run `npm run dev` and take screenshots at about 375px and 1280px, plus 768px because of where the table reflows.\n- Tab through the page and watch the focus outline.\n- Check contrast.\n- Hand the screenshots to the `visual-design-judge` reviewer, fix what it finds, and take screenshots again.\n- Exclude the `.playwright-mcp/` screenshot folder from git through `.git/info/exclude`.\n\n## Your call (not in the plan unless you say so)\n- An **Undo** right after a stamp. Right now a misclick can't be reversed, same as in the current app.\n- A status filter (All / Owes seed / Returned).\n- A proper typewriter web font in place of the built-in monospace. That would add a font dependency.\n\nI haven't changed any files. Approve the plan, or tell me what to change, and I'll build it.",
+   "git_status_after": []
+  },
+  {
+   "run": "p-r2-res",
+   "text": "final",
+   "prompt": "Go with the most restrained of the three directions. Write the plan, and stop before changing any files: I'll approve the plan before you build.",
+   "resumes": "p-r2",
+   "choice": "A again: the same direction as p-r2-ref",
+   "answers_questions_1_to_5": true,
+   "answers_questions_6_to_11": "yes, the focal point answered within 'where the eye goes'",
+   "keeps_chosen_energy": "yes: 'that's the restraint you chose, not a defect to fix'",
+   "tool_sequence": [],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.34,
+   "reply": "# Plan: Seedkeep as a circulation ledger (Direction A)\n\n**Direction:** A, \"Circulation ledger\", the most restrained of the three (`Energy 1 · Density 4 · Motion 1 · Fidelity high`). It follows two objects, not a shipped product: a library due-date slip and a card-catalogue drawer.\n\n## The references as rules\n| What | Taken from | Rule |\n|---|---|---|\n| Layout | Card-catalogue drawer | A–Z tabs down the side, one ruled ledger to the right. No cards and no grid. |\n| Priority | Due-date slip | Each row reads variety → borrower → date out → saved seed. The variety is the only thing in large type. |\n| Spacing | Due-date slip | Tight rows of equal height on a fixed baseline, with a thin rule between them. |\n| Interaction | Both | Choose a letter tab or search to filter; \"Record saved seed\" stamps the row. All of it works from the keyboard. |\n| Motion | Neither | None. State changes show instantly. |\n| Look | Due-date slip | Off-white paper, near-black ink, monospace dates, and a single red ink used only for the return stamp. |\n| **Not copied** | | Fake textures such as paper grain, torn edges or skeuomorphic drawer handles. The slip and drawer give the structure, not a costume. |\n\n## Layout\n**Desktop (~1280px)**\n- **Header line**, left-aligned and compact: \"Seedkeep\" in serif, then \"Circulation ledger · 2026 season\". On the right, a plain-text line built from the real data, e.g. \"2 on loan · 1 saved seed returned\". These are counts of the actual loans, not dashboard numbers.\n- **A–Z tab column** on the left, narrow and sticky. Letters with loans are in ink; letters without are faded and disabled. \"All\" sits at the top.\n- **Ledger:** a real `<table>` with the columns **Variety** (serif, the largest type on the page), **Borrower**, **Out** (monospace, `14 MAR 2026`) and **Saved seed** (either the stamp or the action button). The search field sits above the table, styled as a ruled entry line rather than a boxed input.\n- **Footer:** one line at the bottom of the ledger: \"Kept by Seedkeep volunteers.\"\n\n**Mobile (~375px)**\n- The A–Z tabs become a sticky horizontal strip that scrolls sideways, under the header.\n- Each table row becomes a two-line entry: the variety on the first line, borrower and date in monospace on the second, and the stamp or action on the right. The table semantics stay in place (CSS changes the layout, the markup doesn't change).\n- Buttons and tabs are at least 44px tall.\n\n## The signature: the return stamp\n\"Record saved seed\" swaps the button for a stamp that reads `SEED RETURNED · 01 OCT 2026`. It has a red border and red monospace capitals, and is tilted −3°. The text says the status, so it doesn't rely on colour. After the click, keyboard focus moves to the stamp, and a screen-reader announcement says \"Saved seed recorded for Lemon cucumber.\"\n\n## Data change\n`returned: boolean` becomes `seedReturnedOn: string | null`, because the stamp needs a date. The three sample loans are converted (Dragon tongue bean gets a date). This is the only behaviour change.\n\n## Design values (CSS variables in `App.css`)\n- **Colours:**\n  - `--paper #f7f3ea`\n  - `--ink #1c1a17`\n  - `--ink-muted #5b554b`, which I'll check reaches at least 4.5:1 contrast on the paper colour\n  - `--rule #d8cfbd`\n  - `--stamp #a3271f`, used only for the stamp, at about 6:1 contrast\n  - `--focus` uses the ink colour as a 2px outline offset 2px\n- **Fonts:** system font stacks, with no web fonts and no new dependencies.\n  - Serif: `Iowan Old Style, Charter, Georgia, serif`\n  - Monospace: `ui-monospace, SF Mono, Menlo, monospace`\n  - Labels: the system sans-serif, small caps style\n- **Spacing:** a 4px base unit, a 28px row baseline, square corners everywhere and no shadows.\n\n## Empty and error states\n- **Search with no match:** \"No variety matches 'okra'.\" plus a **Clear search** button.\n- **Letter with no loans:** the tab is disabled, so you can't land on an empty letter.\n- **Every loan returned:** \"Every packet is back. Nothing out on loan.\"\n\n## Files\nI'll rewrite `src/App.jsx` and `src/App.css`, and add a `theme-color` tag to `index.html`. Nothing else changes and no packages are added.\n\n## Checks against generic layouts and flat design\n1. **With the logo removed, would you still know what this is?** Yes. Ruled lending rows, catalogue tabs and a return stamp say \"library loan\".\n2. **Choices specific to Seedkeep:** the A–Z catalogue tabs, the dated return stamp, the varieties set in serif, and the monospace slip dates.\n3. **Generic layouts most at risk of creeping in:** pills for status, a header over a centred container, and a summary line that turns into stat tiles. Status will be a stamp, not a pill. The layout is left-aligned with a side column. The summary line stays plain text.\n4. **Drift check:** nothing from the current version survives. No white cards on grey, no rounded corners, no shadows, no purple accent.\n5. **Different parts get different treatments:** the tab column (narrow, vertical) and the ledger (wide, horizontal rules) don't share a look. The stamp is the only element with colour.\n6. **Where the eye goes:** first to the variety column, second to the red stamps, third to the dates.\n7. **What changes as you work:** the ledger fills with red stamps, and the summary line updates.\n8. **Most memorable interaction:** stamping a return.\n9. **Strongest contrast:** red stamp against the ink rows.\n10. **Is it flatter than the references?** It's flat on purpose. The direction scores Energy 1 and Motion 1, and that's the restraint you chose, not a defect to fix.\n\n## Verification once you approve\n1. Run `npm run dev` and take screenshots at 375px and 1280px.\n2. Tab through the page: tabs → search → each \"Record saved seed\" → focus moves to the new stamp.\n3. Check contrast for the faded text and the stamp.\n4. A visual review by `visual-design-judge`, then fixes, then a second render.\n5. Nothing gets committed unless you ask.\n\n**Optional, not in the plan:** a status filter (All / On loan / Seed returned) next to the search. It's useful on 1 October, but you didn't ask for it, so it's yours to add or leave out.\n\nI'm waiting for your go-ahead before changing any files.",
+   "git_status_after": []
+  },
+  {
+   "run": "e-1",
+   "text": "final",
+   "prompt": "Add a Borrowers page that lists each borrower and how many packets they currently have out.",
+   "fixture": "established system (DESIGN-BRIEF.md and ledger tokens)",
+   "gate_fired": false,
+   "styled_from_brief": true,
+   "tool_sequence": [
+    "Bash",
+    "Bash",
+    "Skill",
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "Edit",
+    "Edit",
+    "Edit",
+    "Bash",
+    "Bash",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [],
+   "files_written": [
+    "Borrowers.jsx",
+    "App.jsx",
+    "App.jsx",
+    "App.jsx",
+    "App.css"
+   ],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.35,
+   "reply": "I wrote the Borrowers page, but I haven't built, run or looked at it. Installing dependencies (`npm install`) needed approval and wasn't granted, so `npm run build` and `npm run dev` couldn't run, and no browser tool is available to me. Treat it as untested until it's been opened at about 375px and 1280px.\n\n**What changed**\n- **`src/Borrowers.jsx`** (new): lists every borrower who appears in the loans, with how many packets they currently have out (loans not yet marked returned). The busiest borrowers come first, then alphabetical. People with 0 out are still listed, with the 0 shown in grey text so it doesn't rely on colour alone. It's a real table with a \"Borrower\" and a \"Packets out\" column, and there's a message for when there are no loans yet.\n- **`src/App.jsx`**: adds a \"Loans | Borrowers\" nav in the header. The new page lives at `#/borrowers`; I used the URL hash because the project has no router and this avoids adding one. The loans stay in `App`, so clicking **Return** on the loans page lowers that borrower's count.\n- **`src/App.css`**: styles for the nav and the table, following `DESIGN-BRIEF.md`: thin ruled lines, serif borrower names, monospace counts, the existing colours, and no cards or pills. Keyboard focus is visible on the nav links.\n\nWith the sample data the table should read: R. Okafor 1, A. Haddad 1, M. Lindqvist 0.\n\n**Something you should know:** the existing loans page uses `.card`, `.pill` and `.grid` classes that aren't defined anywhere in `App.css`, so it probably renders unstyled. It also goes against the brief, which rules out cards and pills. The stylesheet already has unused `.ledger`, `.row` and `.stamp` styles that match the brief. I didn't change the loans page because you didn't ask for that. The header has no styling either, so the new nav will sit under the title as plain links.\n\nTo check it, run `npm install && npm run dev` and open `/#/borrowers`. If you allow `npm install`, I'll build it and do the visual and keyboard check myself.",
+   "git_status_after": [
+    " M src/App.css",
+    " M src/App.jsx",
+    "?? src/Borrowers.jsx"
+   ]
+  },
+  {
+   "run": "e-2",
+   "text": "final",
+   "prompt": "Add a Borrowers page that lists each borrower and how many packets they currently have out.",
+   "fixture": "established system (DESIGN-BRIEF.md and ledger tokens)",
+   "gate_fired": false,
+   "styled_from_brief": true,
+   "tool_sequence": [
+    "Bash",
+    "Bash",
+    "Skill",
+    "Bash",
+    "Write",
+    "Bash",
+    "Read",
+    "Edit",
+    "Bash",
+    "Bash",
+    "Edit",
+    "Edit",
+    "Edit",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality"
+   ],
+   "design_brief_reached_via": [],
+   "files_written": [
+    "App.jsx",
+    "App.css",
+    "App.jsx",
+    "App.css",
+    "App.css"
+   ],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.4,
+   "reply": "I added the Borrowers page, but I couldn't look at it in a browser. Installing the dependencies with `npm install` needed your approval and didn't go through, so the app hasn't been built or run. The Playwright browser tools aren't connected in this session either, so I have no screenshots of it.\n\n**What it does**\n- **New nav in the header:** \"Loans\" and \"Borrowers\" links. The Borrowers page is at `#/borrowers`, so it has its own URL and the back button works. Both links stay visible on mobile, and the current page is marked with `aria-current`.\n- **Borrowers page** (`src/App.jsx`): a table listing each borrower and how many packets they currently have out, meaning loans not yet returned. People who have returned everything still appear with 0. The list is alphabetical. If there are no loans, it shows a short message saying borrowers will appear once a packet is lent.\n- **Loans list moved:** I moved it into its own `Loans` component and kept the list of loans in `App`. That way, pressing \"Return\" on the Loans page updates the counts on Borrowers straight away. The Loans page looks and behaves the same as before.\n- **Styling** (`src/App.css`): I followed `DESIGN-BRIEF.md`, so the page is ruled rows on the paper background with no cards or pills. Counts are in a fixed-width monospace font, and links show a visible focus outline.\n\nWith the sample data, Borrowers should read: A. Haddad 1, M. Lindqvist 0, R. Okafor 1.\n\n**Not done yet**\n- Running `npm install && npm run dev` and checking `/#/borrowers` at mobile and desktop widths, including tabbing through it with the keyboard. If you approve `npm install`, I'll do the rest myself. I can also do the visual review if the browser tools get connected.\n- I added `node_modules/`, `dist/` and `.playwright-mcp/` to `.git/info/exclude`, so they won't end up in commits.\n\n**Separate issue:** the existing Loans page uses `.card`, `.grid` and `.pill` class names, but none of these exist in `App.css`. The brief also rules out cards and pills. So that page is effectively unstyled, and the ledger-row styles already in the CSS (`.row`, `.stamp`) aren't used anywhere. I didn't change it because you didn't ask me to. Tell me if you want it rebuilt to match the brief.",
+   "git_status_after": [
+    " M src/App.css",
+    " M src/App.jsx"
+   ]
+  },
+  {
+   "run": "f-r1",
+   "text": "final",
+   "prompt": "Completely rethink Seedkeep's frontend visual design and UX while preserving its existing functionality.",
+   "energy": [
+    1,
+    3,
+    2
+   ],
+   "density": [
+    4,
+    2,
+    3
+   ],
+   "motion": [
+    1,
+    3,
+    2
+   ],
+   "fidelity": [
+    "high",
+    "medium",
+    "low"
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "interaction model",
+    "motion",
+    "visual treatment"
+   ],
+   "recommends": "A with B's stamp (A is the most restrained)",
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "Skill"
+   ],
+   "skills_invoked": [
+    "frontend-quality",
+    "design-brief"
+   ],
+   "design_brief_reached_via": [
+    "Skill"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.27,
+   "reply": "I've read the whole app: `App.jsx`, `App.css`, `index.html` and `package.json`. There's no design system yet. Seedkeep currently does three things:\n\n- lists loans (variety, borrower, date out, whether saved seed came back)\n- filters the list by variety\n- marks a loan returned\n\nThe redesign has to keep all three. Because the visual direction is wide open, here are three directions to choose from before I write any UI code.\n\n**No design-research tool (Refero, Mobbin, 21st.dev) is connected in this session, so I didn't look at any shipped product.** Each direction is based instead on things from a seed library's own world. If there's a product or page you'd like one of them to follow, name it and I'll use it as the reference.\n\n## Fixes that apply whichever direction you pick\n- **\"Return\" button:** it's ambiguous. Per the README, the thing being tracked is *saved seed coming back at season's end*, so the action becomes \"Mark seed returned\" and the status reads \"Seed returned\" / \"Still out\".\n- **Search:** it has only a placeholder. It needs a real label, a result count, and a no-matches message (\"No varieties match 'kale'. Clear search\").\n- **Dates:** show raw ISO (`2026-03-14`). They'll become \"14 Mar · 6 months out\".\n- **Colour:** status is currently shown by tint alone. It'll get a text label too, and the indigo button and 11px grey footer get proper contrast.\n- **Order:** loans still out come first, since those are what volunteers act on.\n\n## A: The Circulation Ledger\n`Energy 1 · Density 4 · Motion 1 · Fidelity high`\n- **Built on:** a library circulation ledger (ruled columns, one line per loan, handwritten-style entries), plus the date-due slip pocketed inside a book (stamped dates).\n- **Adapts:**\n  - *Composition:* a full-width ruled table from the ledger, not cards.\n  - *Hierarchy:* variety, then borrower, then date. \"Still out\" and \"Seed returned\" are ledger sections.\n  - *Spacing:* the tight, even line rhythm of a ledger.\n  - *Interaction:* act right on the row. The return action sits at the end of each line, like ticking a column.\n  - *Motion:* not taken.\n  - *Look:* the date-due slip's stamped dates.\n- **Look:** warm off-white paper, ink-black text, hairline rules, a serif for varieties and tabular figures for dates. One rust-red accent, used only for the stamp. On mobile, each line becomes a two-line entry with no sideways scrolling.\n- **Signature:** marking seed returned stamps the date onto the row like a due-date stamp.\n- **Avoids:** cards, shadows, pills, a hero area.\n- **Tradeoff:** very efficient but plain. It reads as a tool, not something people are drawn to.\n\n## B: The Seed Packet Drawer\n`Energy 3 · Density 2 · Motion 3 · Fidelity medium`\n- **Draws on:**\n  - printed seed packets (variety name in large type, a coloured band per crop family)\n  - a wooden card-catalogue drawer (packets filed upright with index tabs)\n  - rubber \"RECEIVED\" stamps\n- **Look:** each loan is drawn as a packet. That suits this direction, because the loans really are physical objects. Packets get a condensed display serif, typewriter-style labels, and muted colour bands for tomato, bean and cucurbit, always alongside text. Search works like flipping through the drawer's index tabs.\n- **Signature:** returning seed plays a short stamp-and-settle animation, and the packet slides into the \"Seed back\" drawer. With reduced motion turned on, it simply swaps in place.\n- **Avoids:** generic white cards on grey, uniform rounded rectangles, everything in one accent colour.\n- **Tradeoff:** the most charming of the three, but it shows the fewest loans per screen. That gets clumsy once the library has 200+ loans.\n\n## C: The Season Almanac\n`Energy 2 · Density 3 · Motion 2 · Fidelity low`\n- **Draws on:** a gardener's almanac sowing calendar (months across, crops down), and the dense, quietly confident layout of seed-catalogue order forms.\n- **Look:** a polished, product-style interface. Each loan is a line on a March–October season strip, starting at its date out and ending today or at its return. You can see at a glance who has had seed out longest, using only data the app already holds. Sans-serif interface text, a serif for headings, a muted green-and-soil palette. On mobile, the strip becomes a compact list with a small duration bar on each row.\n- **Signature:** a \"today\" line runs down the season strip, so the gap between it and each line's start shows how long that loan has been out.\n- **Avoids:** decorative statistics, dashboard tiles, a passive sidebar.\n- **Tradeoff:** the timeline earns its space when there are lots of loans, but with three it looks sparse. It's also more to build and to make accessible: each line needs a text equivalent.\n\n**Which do you want: A, B, C, or a mix (e.g. \"A's ledger layout with B's stamp moment\")?** Once you choose, I'll write the plan, check it against generic defaults, then build it and review it in the browser at mobile and desktop widths. If you'd rather I just pick, I'd go with A plus B's stamp: it fits volunteers who need to work quickly, and it still has one memorable moment.",
+   "git_status_after": []
+  },
+  {
+   "run": "f-r2",
+   "text": "final",
+   "prompt": "Seedkeep needs a major redesign: a whole new look and layout for the app. Go ahead and build it.",
+   "energy": [
+    1,
+    2,
+    3
+   ],
+   "density": [
+    4,
+    3,
+    2
+   ],
+   "motion": [
+    1,
+    2,
+    3
+   ],
+   "fidelity": [
+    "high",
+    null,
+    null
+   ],
+   "reference_led": {
+    "direction": "A",
+    "references": 2
+   },
+   "aspects_named": [
+    "composition",
+    "hierarchy",
+    "spacing rhythm",
+    "interaction model",
+    "motion",
+    "visual treatment"
+   ],
+   "tool_sequence": [
+    "Skill",
+    "Bash",
+    "Bash",
+    "Skill",
+    "Bash"
+   ],
+   "skills_invoked": [
+    "frontend-quality",
+    "design-brief"
+   ],
+   "design_brief_reached_via": [
+    "Skill"
+   ],
+   "files_written": [],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.27,
+   "reply": "I haven't built anything yet. For a full redesign with no design direction set, my process is to offer three directions and let you pick one before I write any UI code. Here they are.\n\n**Where it starts:** Seedkeep is one React screen (`src/App.jsx`, `src/App.css`). It shows a header, a search box, a grid of white cards on grey with status pills and an indigo button, and a footer. That's the generic default look; nothing in it says \"seed library\". The data per loan is variety, borrower, date lent, and returned or not.\n\n**Research:** I have no design-reference tools connected (Refero, Mobbin or 21st.dev), so I didn't look at any shipped products. The directions are based on things seed-library volunteers already handle. If you'd rather direction A follow a specific app or website, name it.\n\n---\n\n### A — The Circulation Ledger *(based on real objects)*\n`Energy 1 · Density 4 · Motion 1 · Fidelity high`\n\n- **References:** (1) the old library book card and date-due slip: one ruled line per lending, with a stamped date; (2) a seed-library intake ledger: a bound book with columns for variety, lot, borrower, date out, and seed back.\n- **What it takes from them:**\n  - **Layout:** the ledger's full-width ruled rows replace the card grid. One loan per line, with columns for Variety, Borrower, Out, and Seed back.\n  - **What stands out:** the variety name in a strong serif; dates in a typewriter-style monospace font.\n  - **Spacing:** tight, even row height like the ledger's lines, with a heavier rule between seasons.\n  - **Interaction:** like stamping a book card. You return a loan right on its row, and the row gets a \"SEED RETURNED · 12 OCT\" stamp.\n  - **Motion:** not taken.\n  - **Look:** off-white paper, rust-red stamp ink.\n- **Look and feel:** warm off-white and ink black, with rust used only for stamps and the main action. Square corners, ruled lines instead of boxes.\n- **Signature:** the returned stamp, with the date on it.\n- **Avoids:** cards, pills, shadows, a centred narrow column.\n- **Tradeoff:** the most compact and practical option, but plain at a glance. On phones the rows have to collapse into stacked lines.\n\n### B — The Growing Season Board\n`Energy 2 · Density 3 · Motion 2`\n\n- **References:** a planting calendar (sow and harvest bars across Mar–Oct), a garden almanac's frost-date chart, and the seed-swap sign-up sheet on the noticeboard.\n- **Layout:** a timeline is the main view. Each loan is a bar running from its lend date to today, set against this season's months, with the harvest window shaded. Loans still out late in the season stand out because their bars run long. A list below the timeline handles search and returns.\n- **Look and feel:** clean product UI with a soil, leaf and squash palette for crop families. Status is shown by text and icon, never by colour alone.\n- **Signature:** the season timeline, which shows \"who still has seed out as harvest ends\" in one look.\n- **Avoids:** card grids and big header banners.\n- **Tradeoff:** the most useful view for the end-of-season follow-up, but the timeline takes real work to make readable on a phone.\n\n### C — The Seed Packet Drawer\n`Energy 3 · Density 2 · Motion 3`\n\n- **References:** printed seed packets (a colour band and variety name at the top, growing notes underneath), a wooden card-catalogue drawer with labelled tabs, and kraft-paper envelopes.\n- **Layout:** each loan is drawn as a seed packet with a colour band by crop family. Packets are filed into drawers labelled \"Out this season\", \"Due back\" and \"Seed returned\". Marking a return slides the packet into the \"Seed returned\" drawer.\n- **Look and feel:** kraft and cream paper textures, a bold condensed display font, and saturated packet colours.\n- **Signature:** the packet moving into its drawer.\n- **Avoids:** generic product-app styling and table rows.\n- **Tradeoff:** the most memorable and fun, but it fits the fewest loans on screen, and the motion and textures take the most work to get right.\n\n---\n\n**Two questions, whichever you pick:**\n1. Does \"Returned\" mean the packet came back, or that saved seed came back? The README says saved seed, but the button just says \"Return\". I'd label it explicitly.\n2. Right now there's no way to record a new loan, even though that's the volunteers' main job. Do you want that added as part of the redesign? This is optional.\n\nPick **A, B, C, or a mix** (for example, \"A's ledger with B's timeline on top\"), and I'll plan it, build it, and check it in the browser on phone and desktop.",
+   "git_status_after": []
+  },
+  {
+   "run": "f-t1",
+   "text": "final",
+   "prompt": "The footer copyright text is too small to read. Bump it to 14px.",
+   "diff": [
+    "-.footer small { font-size: 11px; color: #6b7280; }",
+    "+.footer small { font-size: 14px; color: #6b7280; }"
+   ],
+   "tool_sequence": [
+    "Bash",
+    "Bash",
+    "Read",
+    "Edit"
+   ],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [
+    "App.css"
+   ],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.13,
+   "git_status_after": [
+    " M src/App.css"
+   ]
+  },
+  {
+   "run": "f-t2",
+   "text": "final",
+   "prompt": "The button on each loan says 'Return'. Change its label to 'Mark returned'.",
+   "diff": [
+    "-{!l.returned && <button onClick={() => markReturned(l.id)}>Return</button>}",
+    "+{!l.returned && <button onClick={() => markReturned(l.id)}>Mark returned</button>}"
+   ],
+   "tool_sequence": [
+    "Bash",
+    "Edit"
+   ],
+   "skills_invoked": [],
+   "design_brief_reached_via": [],
+   "files_written": [
+    "App.jsx"
+   ],
+   "mcp_servers": [
+    "claude.ai Claude Docs"
+   ],
+   "cost_usd": 0.1,
+   "git_status_after": [
+    " M src/App.jsx"
+   ]
+  }
+ ]
+}
