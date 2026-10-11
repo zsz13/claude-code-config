@@ -1009,11 +1009,11 @@ use`, and asked.
 
 ### The guard
 
-**Decision table.** 104 PreToolUse payloads fed to `skill-install-guard.sh`,
-kept in [`scripts/test-skill-install-guard.py`](../scripts/test-skill-install-guard.py)
+**Decision table.** 132 PreToolUse payloads fed to `skill-install-guard.sh`,
+kept in [`scripts/test_skill_install_guard.py`](../scripts/test_skill_install_guard.py)
 and run by `scripts/verify.sh`, so a change that stops any of them deciding as
 below fails the verifier.
-64 get `ask`:
+77 get `ask`:
 - every `skills add`/`update`/`remove` form: through `npx`, `bunx`, `pnpm dlx`,
   `npm exec`, `sudo -E`, `timeout` or `bash -lc`, after `cd &&`, or split by a
   line continuation;
@@ -1026,9 +1026,15 @@ below fails the verifier.
   `scp`, `degit`, `gh repo clone`, `mkdir`, `rm`, `tee`, `tar -x`, `unzip -d`,
   `git clone`/`pull`, `sed -i`, `curl -o`, `find -delete`/`-exec`, `>`/`>>`, a
   heredoc. Also inside `for … do`, `if … then` and `xargs`, after a `#` comment,
-  and after a `cd` into a skill directory.
+  and after a `cd` into a skill directory;
+- commands the shell runs from text:
+  - a here-doc fed to `bash`, `sh -s`, `ksh` or `ssh`;
+  - `$(…)` in an unquoted here-doc or in double quotes;
+  - backticks in a double-quoted commit message;
+  - a real command after a here-doc that only mentions one, after a
+    `$(cat <<'EOF' …)`, or after `(( n = 1 << 2 ))`.
 
-40 get no decision:
+55 get no decision:
 - `skills find`/`use`/`list`/`--help`, and `add --list`;
 - reads: `cat`, `ls`, `sed -n`, `cp` out of a skill directory, `tar -c`, `git
   log`, and `find` or `find -exec cat` in one;
@@ -1038,12 +1044,36 @@ below fails the verifier.
 - this repository's own `skills/`, `src/` edits, `cd src && cp`, a `for` loop
   copying to `/tmp`, and `timeout 60 npm test`;
 - a settings edit that changes only `model`, `enabledPlugins` in
-  `package.json`, a `Read`, and a malformed payload.
+  `package.json`, a `Read`, and a malformed payload;
+- install commands mentioned as text: PR, issue and comment bodies (`--body`,
+  `--body-file -`), commit messages written by a quoted here-doc, documents
+  written by quoted and unquoted here-docs, the usual
+  `git commit -m "$(cat <<'EOF' …)"` with a `1)` list in it, `echo` and `printf`
+  text, single-quoted backticks, a comment with an apostrophe, and a Python
+  here-doc holding sample commands.
 
 An adversarial review of the first version supplied 23 of the `ask` rows: 20
 shell forms, the letter case, and the two settings edits. That version gave
-none of them a decision. All 104 now come out as expected. The count says how
-many forms were tried, not that no others exist.
+none of them a decision.
+
+Use then found a false positive. Opening this repository's pull request, the
+guard asked before `gh pr create`: the PR body, written to a file by a quoted
+here-doc, mentioned `` `skills add` ``. The classifier tokenized here-doc bodies
+as shell. The body's apostrophes broke the tokenizer, and its fallback split the
+text on backticks, so `skills add` became a command. The fix separates code from
+data first, as the shell does. Here-doc bodies and comments are data, unless
+the here-doc feeds a shell. `$(…)` and backticks outside single quotes are
+commands, because the shell runs them, including inside double quotes and
+unquoted here-docs. The exact command (with the scratchpad and repository paths
+made generic) and 27 related rows were added: 14 that must get no decision and
+13 that must still ask. Three of the 27 came from probing the fix itself for
+misses: an unmatched `)` in a here-doc inside `$(…)`, bash arithmetic `<<`, and
+`ksh`. The pre-fix classifier fails five of the 28:
+- the three here-doc bodies, which it asked about;
+- the two substitutions inside double quotes, which it never asked about.
+
+All 132 now come out as expected. The count says how many forms were tried, not
+that no others exist.
 
 **End to end.** One headless session (`claude -p`, Sonnet) per column, in a
 throwaway git project outside `~/.claude`, with only this hook configured and,
@@ -1102,7 +1132,7 @@ text changes when sessions search.
 - **The `/context` measurement that is missing:** run a representative long task
   with the layer disabled, record `/context`; repeat with it enabled. Same task,
   same repository, same starting state.
-- **The install guard (§10):** `python3 scripts/test-skill-install-guard.py -v`
+- **The install guard (§10):** `python3 scripts/test_skill_install_guard.py -v`
   reruns the decision table and prints the reason shown for each `ask`; add a
   row for any form you want pinned. For sessions, keep the throwaway project
   outside `~/.claude`.

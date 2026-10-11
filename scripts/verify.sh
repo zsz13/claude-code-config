@@ -145,7 +145,7 @@ if [ $? -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
 printf '\nSkill-install guard decides its regression table as expected:\n'
 # The guard reads command text, so a refactor can silently stop it asking. The
 # table pins every form it was tested on, including an adversarial review's.
-if out=$(python3 "$REPO/scripts/test-skill-install-guard.py" "$REPO/hooks/skill-install-guard.sh" 2>&1); then
+if out=$(python3 "$REPO/scripts/test_skill_install_guard.py" "$REPO/hooks/skill-install-guard.sh" 2>&1); then
   ok "${out##*$'\n'}"
 else
   bad "skill-install-guard.sh:"; printf '%s\n' "$out" | sed 's/^/        /'

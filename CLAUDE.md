@@ -36,7 +36,7 @@ and agents have `name`/`description` frontmatter, every rule declares a `paths:`
 glob list, every relative markdown link resolves, no absolute home path or email
 address is present, every hook command in `settings.example.json` points at a
 file this repository actually ships, and that the skill-install guard still
-decides its regression table (`scripts/test-skill-install-guard.py`) as expected.
+decides its regression table (`scripts/test_skill_install_guard.py`) as expected.
 
 **Nothing machine-specific.** No `/Users/...`, no `/home/...`, no usernames, no
 email addresses, no private repository names, no hostnames, no tokens. Use

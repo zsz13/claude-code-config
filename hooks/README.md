@@ -62,6 +62,12 @@ before any persistent skill or plugin change:
   continuations, shell keywords (`for … do`, `if … then`), wrappers (`sudo`,
   `env`, `timeout`, `xargs`) and `sh -c` strings are looked through.
 
+Text that only mentions a command is data, as it is to the shell. Examples are a
+PR or issue body, a commit message, a document written by a here-doc, `echo`
+text, or a comment. A here-doc fed to a shell (`bash <<EOF`, `ssh host <<EOF`) is
+a script and is checked. `$(…)` or backticks outside single quotes are run, so
+they are checked too, including inside double quotes and unquoted here-docs.
+
 The prompt says what would be installed and where; for `skills add -g` that is
 every detected agent's skill directory, `~/.claude/skills` included. A refused
 install recreated by hand (the Write tool, `cp`, `mkdir`) is asked about again,
@@ -73,9 +79,10 @@ an install the user wants is legitimate; the rationale is in
 [docs/why-this-setup.md](../docs/why-this-setup.md#why-skills-are-used-on-demand-and-installed-by-decision).
 The same "not a sandbox" limit applies. It reads command text, so a path built
 at run time (a variable, a glob, `$(…)`), a script file, an interpreter
-(`python -c`, `node -e`), `jq` rewriting `settings.json`, or a download tool it
-does not know is not caught. Every form it was tested on, ask or not, is a row
-in [`scripts/test-skill-install-guard.py`](../scripts/test-skill-install-guard.py),
+(`python -c`, `node -e`, or a here-doc fed to one), `jq` rewriting
+`settings.json`, or a download tool it does not know is not caught. Every form
+it was tested on, ask or not, is a row
+in [`scripts/test_skill_install_guard.py`](../scripts/test_skill_install_guard.py),
 which `scripts/verify.sh` runs.
 
 ## The five that advise

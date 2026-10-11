@@ -14,10 +14,13 @@ Asks the user (permissionDecision "ask") before a persistent skill or plugin cha
 Skill and plugin directories, at any depth and in any letter case: .claude/skills, .agents/skills,
 .codex/skills, .claude/commands, .claude/plugins. Never asked about: skills find|use|list|init,
 skills add --list, reading those directories.
-Commands are tokenized quote-aware (shlex with shell punctuation, no comment stripping, line continuations
-joined), so a quoted mention is not a command. Shell keywords, wrappers (sudo, env, timeout, xargs, ...),
-package runners and `sh -c` strings are looked through. Anything unparseable or unrelated -> exit 0 with
-no decision. Fails open.
+Code is separated from data first, as the shell does: here-doc bodies (a PR body, a commit message, a
+document) and comments are data, so the commands they mention are not commands; a here-doc fed to a shell
+(`bash <<EOF`, `ssh host <<EOF`) is a script, and $(...) or `...` outside single quotes, including in
+double quotes and unquoted here-docs, runs. The code is then tokenized quote-aware (shlex with shell
+punctuation, line continuations joined), so a quoted mention is not a command. Shell keywords, wrappers
+(sudo, env, timeout, xargs, ...), package runners and `sh -c` strings are looked through. Anything
+unparseable or unrelated -> exit 0 with no decision. Fails open.
 """
 import json
 import os
@@ -27,6 +30,7 @@ import sys
 
 SEG = re.compile(r"\|\||&&|\||;|\n|\(|\)|\$\(|`")
 REDIRECT = re.compile(r">>?\|?\s*([^\s;&|<>()]+)")
+HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([^\s;&|<>()'\"]+))")
 SKILL_DIR = re.compile(r"(?:^|[/=])\.(?:(?:claude|agents|codex)/skills|claude/(?:commands|plugins))(?:/|$)", re.I)
 SETTINGS_FILE = re.compile(r"(?:^|/)\.claude/settings(?:\.local)?\.json$", re.I)
 PLUGIN_KEYS = re.compile(r"enabledPlugins|extraKnownMarketplaces")
@@ -39,7 +43,7 @@ PREFIXES = {  # wrapper -> its flags that take a value
     "nohup": set(), "stdbuf": set(),
 }
 RUNNERS = {"npx", "bunx", "pnpx"}
-SHELLS = {"sh", "bash", "zsh", "dash"}
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
 SKILLS_WRITE = {"add", "a", "update", "upgrade", "remove", "rm", "experimental_install", "experimental_sync"}
 SKILLS_VALUE_FLAGS = {"-a", "--agent", "-s", "--skill", "--metadata", "--subagent", "--include", "--exclude"}
 PLUGIN_WRITE = {"install", "i", "update", "uninstall", "remove", "enable", "disable", "init", "new", "prune", "autoremove"}
@@ -56,6 +60,102 @@ def in_skill_dir(path: str) -> bool:
 
 def resolve(cwd: str, path: str) -> str:
     return path if not cwd or path.startswith(("/", "~", "$")) or "://" in path else os.path.join(cwd, path)
+
+
+def substitution(text: str, i: int) -> tuple[str | None, str, int]:
+    """For the `...` or $(...) at text[i]: the command it runs (None for $((arithmetic))), its text
+    with here-doc bodies and comments removed, and the index just past it."""
+    if text[i] == "`":
+        j = i + 1
+        while j < len(text) and text[j] != "`":
+            j += 2 if text[j] == "\\" else 1
+        j = min(j + 1, len(text))
+        return text[i + 1:j - 1], text[i:j], j
+    inner, _, j = scan(text, i + 2, nested=True)
+    return (None if text.startswith("$((", i) else text[i + 2:j - 1]), "$(" + inner + ")", j
+
+
+def body_substitutions(body: str) -> list[str]:
+    """Command substitutions in an unquoted here-doc body, where quotes are literal text."""
+    out, i = [], 0
+    while i < len(body):
+        if body[i] == "\\":
+            i += 2
+        elif body[i] == "`" or body.startswith("$(", i):
+            sub, _, i = substitution(body, i)
+            out += [sub] if sub is not None else []
+        else:
+            i += 1
+    return out
+
+
+def feeds_shell(prefix: str) -> bool:
+    """Whether the here-doc read by this command is a script that runs (bash <<EOF, ssh host <<EOF)."""
+    try:
+        argv = effective_argv(shlex.split(prefix, posix=True))
+    except ValueError:
+        return True
+    names = [os.path.basename(a) for a in argv]
+    return bool(names) and (names[0] in ("ssh", "source", ".") or (
+        any(a in SHELLS for a in names) and not any(SHELL_C.fullmatch(a) for a in argv)))
+
+
+def scan(cmd: str, i: int = 0, nested: bool = False) -> tuple[str, list[str], int]:
+    """(code, scripts, end). The code is the command without here-doc bodies, comments and line
+    continuations. The scripts are what the shell also runs: $(...) and `...` outside single quotes,
+    substitutions in unquoted here-docs, and here-doc bodies fed to a shell (or never closed, so the
+    text after them is not lost). Any other here-doc body is data, so a command it mentions is not run.
+    With nested, scanning starts inside a $( and stops just past the ) that closes it."""
+    code, scripts, pending = "", [], []
+    n, quote, start, depth = len(cmd), "", 0, 0
+    while i < n:
+        c = cmd[i]
+        if quote == "'":
+            quote = "" if c == "'" else quote
+            code, i = code + c, i + 1
+        elif c == "\\":
+            code, i = (code, i + 2) if cmd.startswith("\\\n", i) else (code + cmd[i:i + 2], i + 2)
+        elif c == "`" or cmd.startswith("$(", i):
+            sub, text, i = substitution(cmd, i)
+            scripts += [sub] if sub is not None else []
+            code += text
+        elif quote == '"':
+            quote = "" if c == '"' else quote
+            code, i = code + c, i + 1
+        elif c in "'\"":
+            quote, code, i = c, code + c, i + 1
+        elif c == "#" and (not code or code[-1] in " \t\n;&|()"):
+            j = cmd.find("\n", i)
+            i = n if j < 0 else j
+        elif cmd.startswith("<<", i) and not cmd.startswith("<<<", i) and (m := HEREDOC.match(cmd, i)):
+            delim = next(g for g in (m.group(2), m.group(3), m.group(5)) if g is not None)
+            literal = m.group(5) is None or m.group(4) == "\\"
+            pending.append((delim, literal, m.group(1) == "-", code[start:]))
+            code, i = code + m.group(0), m.end()
+        elif c == "\n" and pending:
+            code, i = code + c, i + 1
+            for delim, literal, tabs, prefix in pending:
+                lines, closed = [], False
+                while i < n and not closed:
+                    j = cmd.find("\n", i)
+                    line, i = cmd[i:n if j < 0 else j], n if j < 0 else j + 1
+                    closed = (line.lstrip("\t") if tabs else line) == delim
+                    lines += [] if closed else [line]
+                body = "\n".join(lines)
+                if not closed or feeds_shell(prefix):
+                    scripts.append(body)
+                elif not literal:
+                    scripts += body_substitutions(body)
+            pending, start = [], len(code)
+        else:
+            if nested and c in "()":
+                depth += 1 if c == "(" else -1
+                if depth < 0:
+                    return code, scripts, i + 1
+            if c in ";&|()\n":
+                start = len(code) + 1
+            code, i = code + c, i + 1
+    return code, scripts, n
 
 
 def segments(cmd: str) -> list[tuple[list[str], list[str]]]:
@@ -236,8 +336,13 @@ def argv_reason(argv: list[str], redirects: list[str], cwd: str, depth: int) -> 
 
 
 def command_reason(cmd: str, depth: int = 0) -> str | None:
+    code, scripts, _ = scan(cmd)
+    for script in scripts if depth < 3 else []:
+        reason = command_reason(script, depth + 1)
+        if reason:
+            return reason
     cwd = ""
-    for argv, redirects in segments(cmd.replace("\\\n", " ")):
+    for argv, redirects in segments(code):
         argv = effective_argv(argv)
         if not argv:
             continue

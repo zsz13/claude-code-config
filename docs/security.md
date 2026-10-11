@@ -113,8 +113,15 @@ directory, and a blocked write still printed "Done!" with exit 0
 
 - The same as the deny-guards: it matches command text. A path built at run
   time (a variable, a glob, `$(…)`), a script file, an interpreter (`python
-  -c`, `node -e`), `jq` rewriting `settings.json`, or a download tool it does
-  not know is not caught, and it fails **open** on a parse error. An
+  -c`, `node -e`, or a here-doc fed to one), `jq` rewriting `settings.json`, or a
+  download tool it does not know is not caught, and it fails **open** on a
+  parse error.
+- Text is data, as it is to the shell. A here-doc body, a comment or a quoted
+  string that mentions `skills add` (a PR body, a commit message, a document) is
+  not asked about. A here-doc fed to a shell is asked about, and so are `$(…)`
+  and backticks outside single quotes. The first version tokenized here-doc
+  bodies as commands and asked before a `gh pr create`. That command is now a
+  row in the decision table. An
   adversarial review found 20 shell forms it missed (line continuations,
   comments, loops, `xargs`, `find -delete`, `cd` then a relative path, `cp -r
   skills ~/.claude/`, and others) plus settings edits and letter case; all are
