@@ -215,6 +215,40 @@ rule violation rather than a judgement call, and it is what
 Its corollaries are deliberately uncomfortable: **agreement among reviewers is
 not proof**, and **neither is a passing test suite**.
 
+## Why tests are chosen for the confidence they add
+
+A suite proves only the behavior whose breakage one of its tests would catch.
+More tests are not more proof, and several defaults this setup composes rewarded
+count:
+
+- `superpowers:test-driven-development`'s checklist asks for a test for every
+  new function or method.
+- `rules/tests.md` sent all new behavior to test-first, but it is path-scoped: it
+  loads only once a test file is touched, after the decision to write a test has
+  been made.
+- `test-judge` could only ask for more tests.
+- The jury packet had no slot for runtime evidence, so a reviewer saw a green
+  suite and never learned whether anyone had run the app.
+
+So the decision about whether to test, and where, moved into always-loaded
+`CLAUDE.md` ("Verification and test value"), before any test file exists. It
+scales verification to the change: a small fix keeps the existing checks, and a
+product or workflow change needs the app run and the flow driven. Tests go only
+where they protect something, at the highest boundary that runs reliably, except
+that a pure rule or algorithm is still best served by a table-driven unit test.
+`rules/tests.md` keeps the how. `test-judge` starts from the packet's `Runtime:`
+line and may recommend deleting, merging or replacing a test.
+
+The same section names each way of turning a red test green without fixing
+anything (weakening an assertion, rewriting an expected value, mocking the
+behavior away, deleting or skipping the test, a production branch for the test),
+and makes "pre-existing" a claim that needs a reproduction on an untouched
+baseline. A requirement change still allows a test change, with its reason
+stated.
+
+What this was tested on, and what that does and does not show:
+[benchmarks §11](benchmarks.md#11-test-value-policy).
+
 ## Why the judges are blind and parallel
 
 A reviewer who can see the implementer's reasoning is a worse reviewer:

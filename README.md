@@ -37,7 +37,7 @@ which claims are measured and which are not.
 ## The idea in one diagram
 
 ```
-ALWAYS LOADED       CLAUDE.md (~205 lines of universal policy)
+ALWAYS LOADED       CLAUDE.md (~245 lines of universal policy)
                     settings.json
      │
 CONDITIONAL         rules/     → only when a matching file is touched
@@ -155,10 +155,12 @@ Partial adoption is the expected case:
   cannot depend on whether the harness expands shell variables.
 
 `./scripts/verify.sh` checks the repository (scripts parse, JSON/TOML parse,
-frontmatter present, links resolve, no personal paths, the skill-install
-guard's decision table) and, if a target is
-installed, that every file matches, hooks are executable, and every hook command
-in `settings.json` points at a file that exists.
+frontmatter present, links resolve, named `CLAUDE.md` sections and packet
+fields exist, no personal paths, the skill-install guard's decision table)
+and, if a target is installed, that every file matches, hooks are executable,
+every hook command in `settings.json` points at a file that exists, and the
+installed `CLAUDE.md` has every section the installed rules name (a warning,
+since you copy that file by hand).
 
 ### Manual install
 

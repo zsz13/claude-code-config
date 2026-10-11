@@ -24,6 +24,7 @@ Build:      <pass/fail + exact output or failure lines>
 Tests:      <counts, names of failures, exact output>
 Types:      <pass/fail + errors>
 Lint/static:<pass/fail + findings>
+Runtime:    <app or service started how; flows exercised end to end, incl. the main error path, and their result; console/network errors; or "not run" and why>
 Not run:    <checks skipped, and why>
 
 ## Your task

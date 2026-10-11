@@ -1124,6 +1124,71 @@ text changes when sessions search.
 
 ---
 
+## 11. Test-value policy
+
+**Class: Observed**, two headless runs per arm on one fixture (2026-10-10), with
+the planted-bug check done on one run per arm. A small observation, not proof
+that the policy gives higher confidence in general.
+
+**Setup.** A small React and Node app built for the probe: a seed-library
+lending tracker on Vite, with Vitest, Playwright and a few existing tests. One
+feature request: new loans are due 21 days after lending; the loan list shows
+due dates, marks overdue loans and lists them first; a loan can be extended by
+14 days once, and the server refuses a second extension with the UI saying why;
+loans without a stored due date are due 21 days after lending. It said "Make
+sure it works." Each run was `claude -p`, Opus at `xhigh` effort, auto mode,
+with the Superpowers and frontend-design plugins, the Playwright MCP server, and
+one arm's `CLAUDE.md`, rules, skills and agents as project configuration. Arm A
+was this repository before the policy; arm B was the policy's drafts.
+
+**Planted bugs.** After a run, an evaluator that was not told the arm applied
+eight one-line bugs to its product code, one at a time, and reran the run's own
+unit, API and E2E suites: a 20-day due date, no fallback for old loans, a 7-day
+extension, the server's once-only check removed, overdue loans no longer first,
+the overdue boundary moved by a day, the refusal reason replaced by a generic
+message, and the overdue marker removed.
+
+| | Current setup (A1, A2) | Proposed policy (B1, B2) |
+|---|---|---|
+| Test lines added | +207, +253 | +127, +153 |
+| New `it`/`test` blocks | 16, 15 | 5, 8 (some hold table rows) |
+| API checks with `curl` during the run | 0, 1 | 2, 4 |
+| Planted bugs caught, of 8 | 8 (A2) | 8 (B2) |
+| Session cost | $3.28, $3.59 | $3.10, $2.98 |
+
+- Counted as cases, the two evaluated runs added 15 (A2) and 14 (B2) tests. The
+  policy's runs wrote less test code, not far fewer cases.
+- In both evaluated runs, only the E2E tests caught the generic refusal message
+  and the missing overdue marker, and only the API tests caught the 20-day due
+  date.
+- All four runs started the app and drove the new flow in a browser. Both
+  evaluated runs passed the evaluator's six requirement checks: the API through
+  `curl`, the list's order and marking in a browser or from the rendering code.
+- Neither evaluated run weakened an assertion, deleted or skipped a test, or
+  added production code for a test. A2 rewrote one expected value, for a date
+  format and a wording change; the evaluator judged the new assertion stronger.
+- `superpowers:test-driven-development` was invoked in none of the four runs;
+  all four ran the jury, `test-judge` included.
+
+What this shows: on this task, the policy's runs reached the same measured
+protection with about 40% less test code, and checked the API directly more
+often. What it does not show:
+- higher confidence: the current setup produced no test theater on this task
+  either;
+- anything beyond one fixture, one model and two runs per arm. A1 and B1 were
+  stopped before their planted-bug check, so each 8/8 is a single run;
+- the shipped text: it was edited after the probe and again after review,
+  adding among other things that a small change keeps the existing checks
+  and that a pure rule is best tested by a table-driven unit test, and the
+  edited text was not rerun;
+- whether `test-judge`'s negative-value lens or the packet's `Runtime:` line
+  changes what reviewers report: their output was not compared.
+
+The run directories and logs were in a temporary directory that no longer
+exists; the numbers are as recorded during the probe.
+
+---
+
 ## How to reproduce or extend
 
 - **Capture ledger:** it is a TSV — `timestamp, label, exit, bytes_captured,
@@ -1140,6 +1205,11 @@ text changes when sessions search.
   source edit there asks for approval in default mode and the columns stop
   meaning anything. Project `permissions.allow` entries are ignored in a folder
   that was never trusted; pass them with `--allowedTools` instead.
+- **The test-value policy (§11):** the fixture is not in this repository. To
+  repeat it, use a feature with a pure rule, a server rule and a UI rule, run
+  each arm at least twice from the same commit, and plant the same bugs in every
+  run's product code afterwards, never in its tests. More fixtures and runs per
+  arm are what it needs.
 - **A harder dead-code benchmark:** the fixture design is described above; what
   it needs is distance between the reference and the call site, plus more than
   one run per arm.

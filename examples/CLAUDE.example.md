@@ -123,6 +123,42 @@ static/security analysis > lint > concrete source evidence > LLM opinion.
 - Token economy never overrides correctness, security, tests, or validation. The
   goal is to remove wasted context, not useful context.
 
+## Verification and test value
+
+Aim for the most real confidence per test. Test count and coverage percentage
+are not goals.
+
+- Verify in proportion to the change. A typo, a copy edit, or a small refactor
+  or config change that leaves behavior alone needs the existing checks, not a
+  new suite, and a project without E2E tooling does not get it for a small
+  change. A substantial product or workflow change, a large refactor of one
+  included, needs runtime evidence: run the app, drive the changed flow in a
+  browser or through the real API with realistic data, including its main
+  error path. Passing unit tests do not show that the product works.
+- Write a test only where it protects something: a critical business rule, a
+  security boundary, regression-prone behavior, complex deterministic logic, a
+  protocol or serialization contract, important error handling, or a real user
+  workflow. Not one per function, component or file; not for trivial accessors,
+  framework behavior or implementation details; no large low-meaning snapshots;
+  never only to raise a count or a coverage figure. A coverage gate the project
+  already has stays, met by tests of real behavior; never invent one.
+- Put it at the highest boundary that runs reliably: a real end-to-end or
+  browser flow, then the service or API boundary, then a focused integration
+  test. A unit test earns its place on its own: a pure rule or algorithm (date
+  math, pricing, parsing) is best tested by a table-driven unit test, while one
+  that repeats what an E2E test already proves is waste.
+- This overrides any skill checklist that asks for a test per new function,
+  `superpowers:test-driven-development`'s included; test-first still applies
+  wherever a test is worth writing.
+- A failing test is evidence, not an obstacle. Never weaken an assertion,
+  rewrite an expected value to match a bug, mock away the behavior under test,
+  delete or skip a meaningful test, or add a production branch only for a test.
+  Call a failure pre-existing only after reproducing it on an untouched
+  baseline. If the requirement changed, update the test and say why the old
+  expectation no longer holds.
+- Report verification as evidence: what ran end to end and its result, what
+  each new test protects, and what was not verified.
+
 ## Quality gates
 
 - Respect the repository's toolchain and scripts; one owner per job (details in

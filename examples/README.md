@@ -8,13 +8,13 @@ before adopting them, and delete what does not apply to you.
 
 ## `CLAUDE.example.md` → `~/.claude/CLAUDE.md`
 
-Universal engineering policy, about 205 lines. Loads in **every session,
+Universal engineering policy, about 245 lines. Loads in **every session,
 everywhere**.
 
 Contents: understanding code before editing it, the discovery ladder,
-large-output handling, minimal-change discipline, the evidence ladder, quality
-gates, review policy, subagent policy, skills on demand, context health, and
-safety.
+large-output handling, minimal-change discipline, the evidence ladder,
+verification and test value, quality gates, review policy, subagent policy,
+skills on demand, context health, and safety.
 
 ### What you must customise
 

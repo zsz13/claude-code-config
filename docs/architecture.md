@@ -34,7 +34,7 @@ all three when the guidance is only needed at the moment of a specific action.
 
 ### 1. `CLAUDE.md` — universal policy (always loaded)
 
-About 205 lines. Holds only what is true for every language, every repository,
+About 245 lines. Holds only what is true for every language, every repository,
 every task: how to understand code before editing it, the discovery ladder
 (knowledge graph → symbol lookup → targeted search → targeted reads → whole
 files → traversal), large-output handling, minimal-change discipline, the
@@ -100,7 +100,7 @@ one lens and is explicitly told what its own evidence cannot prove.
 |---|---|---|
 | `spec-judge` | Does the change satisfy the original requirement? | opus / high |
 | `correctness-adversary` | Actively tries to falsify the implementation | opus / high |
-| `test-judge` | What does the test suite fail to prove? | sonnet / high |
+| `test-judge` | What does the test suite fail to prove, and which tests add nothing? | sonnet / high |
 | `architecture-judge` | Structural and long-term maintenance cost | opus / high |
 | `security-judge` | Trust boundaries and reachable exploit paths | opus / high |
 | `jury-arbiter` | Resolves conflicts by evidence, never by vote | opus / xhigh |

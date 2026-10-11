@@ -16,21 +16,35 @@ paths:
 
 # Tests
 
-- Tests prove behavior at a boundary, not implementation details. Do not mock the
-  unit under test; mock only what crosses a process, network, clock, or filesystem
-  boundary, and only if the suite already does.
-- Never weaken an assertion, delete a test, add a skip, or widen a tolerance to get
-  green. A failing test is either a real defect or a wrong test; decide which with
-  evidence, then fix the code or report the test as wrong.
-- New behavior or a bug fix starts from a failing test
+Whether a change needs a test, and at which boundary, is set by "Verification
+and test value" in `CLAUDE.md`. This rule covers how to write and run one.
+
+- Assert observable behavior: what the user sees, what the API returns, what is
+  persisted. Not internal calls, private state, CSS classes, component
+  structure, or large snapshots.
+- Do not mock the unit under test. Prefer a real seam (injected clock, temp data
+  file, ephemeral port, local container) to a mock; mock only a process,
+  network, clock, or filesystem boundary that cannot run locally, and only if
+  the suite already does.
+- One test per meaningful behavior, not per function, component or file.
+  Table-driven rows beat a run of near-identical cases.
+- Where a test is worth writing, write it first
   (`superpowers:test-driven-development`); every fixed bug leaves a regression
-  test. An unexpected failure goes through `superpowers:systematic-debugging`
-  before any edit. Cover the important failure paths and boundaries, not just the
-  happy path. Coverage is an indicator, never the objective; no filler tests.
+  test at the highest boundary the project already tests reliably. Cover the
+  important failure paths and boundaries, not just the happy path. An
+  unexpected failure goes through `superpowers:systematic-debugging` before
+  any edit.
+- Never weaken an assertion, rewrite an expected value, delete a test, add a
+  skip, or widen a tolerance to get green. A failing test is either a real
+  defect or a wrong test; decide which with evidence, then fix the code, or
+  change the test only where it contradicts the requirement (a changed one
+  included) and say why. Call a failure pre-existing only after reproducing it
+  on an untouched baseline. Removing or replacing a low-value test is its own
+  stated decision, never a way past a failure.
 - Use the repository's existing runner. Defaults for new work: pytest (+
   `pytest-cov` when coverage is wanted); Vitest + React Testing Library for
-  unit/component tests in Vite-based frontends; Playwright for the few E2E flows
-  that matter. Never run Jest and Vitest for the same responsibility.
+  unit/component tests in Vite-based frontends; Playwright for browser flows.
+  Never run Jest and Vitest for the same responsibility.
 - Iterate on the smallest relevant selection (`pytest path::test -q`, a single
   spec file); run the full relevant suite before claiming completion. Route a large suite
   through `~/.claude/bin/run-captured -- <cmd>`; when it fails, rerun only the
