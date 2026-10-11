@@ -26,7 +26,7 @@ which claims are measured and which are not.
 | [`rules/`](rules/) | 7 path-scoped rules (Python, TypeScript, frontend, tests, tooling, infra, migrations) | Only when a matching file path is touched |
 | [`skills/`](skills/) | 10 procedures the model invokes by name | On invocation |
 | [`agents/`](agents/) | 7 reviewer subagent definitions | Inside their own subagent |
-| [`hooks/`](hooks/) | 2 deny-guards + 5 advisors | Executed, never loaded |
+| [`hooks/`](hooks/) | 2 deny-guards, 1 approval guard, 5 advisors | Executed, never loaded |
 | [`bin/`](bin/) | `run-captured` — large command output kept on disk | Run as a command |
 | [`config/`](config/) | Sanitized `settings.json`, Ponytail and Codex templates | — |
 | [`examples/`](examples/) | `CLAUDE.md` templates (global, directory-scoped, Codex) | — |
@@ -37,7 +37,7 @@ which claims are measured and which are not.
 ## The idea in one diagram
 
 ```
-ALWAYS LOADED       CLAUDE.md (~185 lines of universal policy)
+ALWAYS LOADED       CLAUDE.md (~205 lines of universal policy)
                     settings.json
      │
 CONDITIONAL         rules/     → only when a matching file is touched
@@ -155,7 +155,8 @@ Partial adoption is the expected case:
   cannot depend on whether the harness expands shell variables.
 
 `./scripts/verify.sh` checks the repository (scripts parse, JSON/TOML parse,
-frontmatter present, links resolve, no personal paths) and, if a target is
+frontmatter present, links resolve, no personal paths, the skill-install
+guard's decision table) and, if a target is
 installed, that every file matches, hooks are executable, and every hook command
 in `settings.json` points at a file that exists.
 

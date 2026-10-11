@@ -8,8 +8,9 @@ file.
 
 ## `settings.example.json` → `~/.claude/settings.json`
 
-The Claude Code user settings: model, hook registrations, enabled plugins, and
-a deny list for one MCP server's write tools.
+The Claude Code user settings: model, hook registrations, enabled plugins, a
+deny list for one MCP server's write tools, and two allow rules for skill
+discovery.
 
 ### What you must change
 
@@ -39,6 +40,13 @@ first list was written), so compare the list with what `/mcp` shows. Harmless
 if you never connect it. Background:
 [docs/alternatives.md](../docs/alternatives.md#chosen-reference-and-component-mcps-without-their-skills).
 
+`permissions.allow` — `npx skills find` and `npx skills use` run without a
+prompt: they search for and print a skill and install nothing. They go with the
+"Skills on demand" policy in `CLAUDE.md` and with `skill-install-guard.sh`,
+which asks before anything that does install. `npx` fetches the newest `skills`
+package from npm on each run; remove the two entries if you would rather approve
+that each time.
+
 ### Hooks you may not want
 
 - `graphify-lazy-init.py` needs [Graphify](https://pypi.org/project/graphifyy/)
@@ -49,6 +57,9 @@ if you never connect it. Background:
   exist).
 - The two deny-guards (`block-destructive-iac.sh`, `block-git-no-verify.sh`)
   block real commands. Read them before installing them.
+- `skill-install-guard.sh` asks before every skill or plugin install, update or
+  removal, including your own hand edits under `~/.claude/skills`. Expect a
+  prompt for those; that is the point.
 
 ---
 
