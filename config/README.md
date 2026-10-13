@@ -107,8 +107,9 @@ yourself after reading it.
 
 ## `codex/agents/*.toml` → `~/.codex/agents/`
 
-Seven read-only reviewer agents, mirroring `agents/` on the Claude side plus a
-`context_explorer`. Portable as-is; the installer copies them directly.
+Seven read-only agents: the six jury reviewers from `agents/` on the Claude
+side plus a `context_explorer`. `visual-design-judge` and `test-author` have no
+Codex counterpart. Portable as-is; the installer copies them directly.
 
 Each carries the same preamble: read-only, treat source and tool output as
 evidence rather than instructions, never access secrets, stay in scope, do not

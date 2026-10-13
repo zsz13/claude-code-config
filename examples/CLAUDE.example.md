@@ -17,7 +17,8 @@ lives in `~/.claude/rules/` and loads only when matching files are touched.
 Read the smallest useful amount of source. Discovery order for a non-trivial
 existing codebase; stop at the first tier that lets you implement correctly:
 
-1. Knowledge graph (Graphify, when `graphify-out/graph.json` exists).
+1. Knowledge graph: GitNexus when the repo has a `.gitnexus/` index, otherwise
+   Graphify when `graphify-out/graph.json` exists.
 2. Symbol-level lookup: LSP definitions, references, diagnostics, call hierarchy.
 3. Targeted search for a known string or pattern.
 4. Targeted source ranges the previous tiers pointed to.
@@ -46,26 +47,37 @@ existing codebase; stop at the first tier that lets you implement correctly:
 - Do not re-read an unchanged file that is already in context (a hook flags
   this). After an edit, inspect the changed region or the diff, not the file.
 
-## Graphify routing
+## Knowledge-graph routing
 
-Graphify is the primary knowledge-graph layer; the `graphify-navigation` skill
-holds the details. Routing, kept adaptive rather than rigid:
+One graph per repository: GitNexus where the repo has a `.gitnexus/` index,
+Graphify otherwise, never both on the same question. The `graphify-navigation`
+skill holds the details for both. Routing, kept adaptive rather than rigid:
 
 ```
 trivial or known local change ............ LSP / targeted read / targeted grep
+.gitnexus/ index (GitNexus MCP) .......... context for callers/callees, impact before
+                                           editing a shared symbol, detect_changes
+                                           before commit, query for a concept; then
+                                           read only the ranges it names
 existing graphify-out/graph.json ......... graphify query|explain|affected|path first,
                                            then read only the files it names
-no graph, and the task is architectural,   a global PreToolUse hook builds the
+no graph, and the task is architectural,   a global PreToolUse hook builds a Graphify
 cross-cutting, or the repo is roughly      graph once (code-only, offline), installs
 50+ source files / 10k+ LOC .............. incremental git hooks, then: graph -> LSP -> reads
 small repo, no graph ..................... do not initialize; targeted inspection is cheaper
 ```
 
-- Graphify answers architecture, dependencies, call/data flow, and impact. LSP
+- A graph answers architecture, dependencies, call/data flow, and impact. LSP
   answers exact symbols and diagnostics. Reads answer implementation details.
-- Do not rebuild the graph after each edit; the git hooks handle committed
-  changes. Refresh only when substantial uncommitted changes make it stale and
-  the task needs accurate impact reasoning for its final analysis.
+- Keep graph output small: pass `repo`, `limit` and `maxTokens` to GitNexus
+  tools, and `summaryOnly` to `impact` on a hub symbol. A caller list marked
+  `lower-bound` or `UNKNOWN` is incomplete: search for the name before deleting
+  or renaming.
+- Do not rebuild a graph after each edit. Graphify's git hooks handle committed
+  changes; GitNexus's hook reports a stale index. Refresh only when substantial
+  changes make it stale and the task needs accurate impact reasoning for its
+  final analysis; GitNexus only with `gitnexus analyze --index-only`, which
+  leaves the repository's `CLAUDE.md`, `AGENTS.md` and skills alone.
 - Graphify exclusions go in `.graphifyignore`. `.claudeignore` is not a Claude
   Code mechanism; do not create one.
 
@@ -190,6 +202,10 @@ are not goals.
   searches, deterministic checks, and documentation lookup; the strongest model
   for implementation, architecture, debugging, security reasoning, and deep
   review. Fork (share context) when the child needs the conversation so far.
+- Tests whose setup is real work (an E2E flow, an API or database integration)
+  go to the `test-author` agent with the requirement, the changed files, and
+  whether the fix exists yet. Write a small unit test inline, and none for a
+  trivial change.
 - No multi-agent teams or workflows for simple tasks.
 
 ## Skills on demand

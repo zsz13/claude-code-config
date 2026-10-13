@@ -3,6 +3,8 @@
 
 Fires only when Claude is about to do a broad, repository-wide search. Then:
   - not a git repo / graphify missing / HOME as root  -> allow silently
+  - .gitnexus/ index exists                            -> nudge once per session to use GitNexus;
+                                                          never build or point at a second graph
   - graphify-out/graph.json exists                     -> nudge once per session to query it
   - no graph: count tracked source files (+LOC if small); if the repo is large
     enough, build once (code-only, offline, no viz), install graphify's
@@ -414,6 +416,14 @@ def main() -> None:
     if root is None or root == Path.home() or str(root) == "/":
         return
     if not is_broad(tool, ti, cwd, root):
+        return
+    if (root / ".gitnexus" / "meta.json").exists():
+        nudge_once(session, state_key(root),
+            f"This repository ({root.name}) has a GitNexus index, which is its code graph: do not build or "
+            "query Graphify for the same question. Use the GitNexus MCP tools with an explicit repo: `context` "
+            "for callers and callees, `impact` before editing a shared symbol (summaryOnly for a hub), "
+            "`detect_changes` before a commit, `query` for a concept; then read only the ranges they name. "
+            "Targeted searches for a known string are fine without it.")
         return
     graphify = shutil.which("graphify")
     if not graphify:

@@ -106,10 +106,11 @@ possibly match.
   after compaction are never wrongly flagged as re-reads.
 - **`graphify-lazy-init`** — builds a code knowledge graph once, lazily: only on
   a broad search, only inside a git repo, only above 50 tracked source files or
-  10k LOC, skipping repos above 6000 files. Strips LLM API keys from the
-  environment first; guards against recursion with an env flag, a command-name
-  check and a per-repo lock; caches its decision; deletes a partial build it
-  created if the build fails.
+  10k LOC, skipping repos above 6000 files and any repo with a GitNexus index
+  (`.gitnexus/`), which gets a one-time pointer to GitNexus instead. Strips LLM
+  API keys from the environment first; guards against recursion with an env
+  flag, a command-name check and a per-repo lock; caches its decision; deletes a
+  partial build it created if the build fails.
 - **`ponytail-guard`** — `status`/`clear`/`force` for the ponytail plugin's
   machine-global mode flag. `clear` removes only a `review` flag and leaves a
   deliberately-set `lite`/`full`/`ultra` alone. Wired to `Stop` and `SessionEnd`

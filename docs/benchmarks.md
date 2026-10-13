@@ -944,6 +944,8 @@ Stated plainly so they are not mistaken for results:
 | Blind, parallel judges reduce anchoring and sycophancy relative to a single self-review | **Hypothesis** — well-motivated, and the protocol is built for it, but not measured here. |
 | Resolving by evidence rather than vote count produces better outcomes | **Rationale** — the argument (correlated blind spots) is sound; no A/B exists. |
 | `test-judge` on a cheaper model loses little | **Hypothesis** — a cost judgement, never tested. |
+| `test-author`'s tests catch more regressions than tests the implementing agent writes inline | **Hypothesis**. It writes from the requirement and must show each test failing against the broken behavior; it has not been run against a fixture. |
+| Where a repository has a GitNexus index, routing graph questions to GitNexus instead of Graphify gives better dependency and impact answers | **Rationale**, with one observed check and no comparison: on one indexed repository (2026-10-12), `impact` on one function returned its direct caller and both of that caller's callers, the same set a text search finds, marked `exact`; after the FTS repair, `query` returned functions at the line numbers the source has. Graphify was not run on the same questions. |
 | The read-budget advisor changes read behavior | **Hypothesis** — the hook fires; nobody measured whether the model then reads narrower. |
 | The large-output advisor changes command choice | **Hypothesis** — same. |
 | One-hint-per-session-per-class is the right frequency | **Rationale** — chosen to avoid nagging, never tuned. |
