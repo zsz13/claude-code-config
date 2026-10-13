@@ -54,7 +54,7 @@ Options:
 Components:
   hooks     PreToolUse/PostToolUse/Stop guards and advisors -> <target>/hooks/
   bin       run-captured large-output helper                -> <target>/bin/
-  agents    reviewer subagent definitions                   -> <target>/agents/
+  agents    reviewer and test-author subagent definitions   -> <target>/agents/
   rules     path-scoped language/stack rules                -> <target>/rules/
   skills    procedure skills                                -> <target>/skills/
   settings  settings.json  (ONLY if absent; otherwise a proposal file is

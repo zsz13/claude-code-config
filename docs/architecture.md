@@ -34,7 +34,7 @@ all three when the guidance is only needed at the moment of a specific action.
 
 ### 1. `CLAUDE.md` — universal policy (always loaded)
 
-About 245 lines. Holds only what is true for every language, every repository,
+About 260 lines. Holds only what is true for every language, every repository,
 every task: how to understand code before editing it, the discovery ladder
 (knowledge graph → symbol lookup → targeted search → targeted reads → whole
 files → traversal), large-output handling, minimal-change discipline, the
@@ -89,12 +89,14 @@ calls for it:
 - `migration-review` — schema/data migration safety review
 - `project-tooling-setup` — quality toolchain for a new or incomplete repo
 - `dependency-modernization` — runtime/dependency audit and upgrade
-- `graphify-navigation` — using a code knowledge graph before reading source
+- `graphify-navigation` — routing a question to the repo's one code graph
+  (GitNexus where indexed, else Graphify) before reading source
 
-### 5. `agents/` — reviewer lenses (loaded inside their own subagent)
+### 5. `agents/` — reviewer lenses and a test author (loaded inside their own subagent)
 
-Seven subagent definitions. Six are judges for the adversarial jury; each has
+Eight subagent definitions. Six are judges for the adversarial jury; each has
 one lens and is explicitly told what its own evidence cannot prove.
+`visual-design-judge` judges renders, and `test-author` writes tests.
 
 | Agent | Lens | Model / effort |
 |---|---|---|
@@ -106,9 +108,17 @@ one lens and is explicitly told what its own evidence cannot prove.
 | `jury-arbiter` | Resolves conflicts by evidence, never by vote | opus / xhigh |
 | `visual-design-judge` | Judges the *rendered* interface, not the source | opus / high |
 
-All are read-only. `correctness-adversary` may dispatch shallow `Explore`
+The judges are read-only. `correctness-adversary` may dispatch shallow `Explore`
 subagents to verify one candidate finding; none may edit, run commands, or spawn
 a reviewer.
+
+`test-author` is the one writer, and it is invoked selectively: for tests whose
+setup is real work (an E2E flow, an API or database integration), or that
+should come from the requirement rather than the implementation. It inherits
+the session's model, because writing a test is implementation. It may edit test
+files and run the affected tests; production code only for a one-line mutation
+it reverts, to show a test can fail. It never weakens an existing test and adds
+no tooling.
 
 `test-judge` runs on a cheaper model deliberately — its lens (what is untested)
 is more enumerative than inferential. This is a cost/benefit judgement, not a
@@ -128,7 +138,7 @@ ask) on a positive match.
 | `large-output-advisor.sh` + `.py` | PreToolUse(Bash) | One-line hint for a command class about to dump a large deterministic output. At most once per session per class. |
 | `read-budget-advisor.sh` + `.py` | PreToolUse + PostToolUse(Read\|Bash) | Hints on re-reading an unchanged file, and on whole-file reads of large files. State keyed by session **and** agent id. |
 | `read-budget-reset.sh` | SessionStart(compact\|clear) | Clears that state so post-compaction reads are never flagged as re-reads. |
-| `graphify-lazy-init.py` | PreToolUse(Grep\|Glob\|Bash) | Builds a code knowledge graph once, lazily, only for a repo big enough to justify it. |
+| `graphify-lazy-init.py` | PreToolUse(Grep\|Glob\|Bash) | Builds a code knowledge graph once, lazily, only for a repo big enough to justify it. In a repo with a GitNexus index it builds nothing and points at GitNexus once. |
 | `ponytail-guard.sh` | Stop + SessionEnd | Clears a leaked Ponytail `review` flag. Leaves a deliberately-set mode alone. |
 
 Each shell wrapper has a cheap `case` fast path so the Python classifier is only
@@ -174,7 +184,8 @@ A component that wants to be a third router is not installed — see
 **Code intelligence is not stacked.** A knowledge graph answers architecture,
 dependencies, call/data flow and impact; LSP answers exact symbols and
 diagnostics; reads answer implementation details. Running two graph systems
-against the same question costs twice and answers once.
+against the same question costs twice and answers once, so each repository
+has one: GitNexus where it has an index, Graphify otherwise.
 
 **Hooks never carry policy alone.** The IaC hook enforces what
 `rules/infrastructure.md` and `skills/infrastructure-quality` explain. The
@@ -190,7 +201,7 @@ and `/context` measure whether any of it worked.
 
 | Scope | What lives there |
 |---|---|
-| **Global** (`~/.claude/`) | `CLAUDE.md`, `settings.json`, all seven rules, all ten skills, all seven agents, all hooks, `bin/run-captured`; at user scope in `~/.claude.json`, the screen-reference MCPs (Refero, Mobbin) and 21st.dev's component-research MCP, without their bundled skills |
+| **Global** (`~/.claude/`) | `CLAUDE.md`, `settings.json`, all seven rules, all ten skills, all eight agents, all hooks, `bin/run-captured`; at user scope in `~/.claude.json`, the screen-reference MCPs (Refero, Mobbin) and 21st.dev's component-research MCP, without their bundled skills |
 | **Directory** (`<code-dir>/CLAUDE.md`) | Ponytail and dead-code trigger rules, priority ladder, reporting requirement, Ponytail state hygiene |
 | **Project** (`<repo>/CLAUDE.md`, `<repo>/.claude/`) | Architecture, commands, conventions, project-specific plugins |
 | **Deliberately not global** | Infrastructure agent packs, design-system/style catalogs, shadcn's and Motion's MCPs (per project, where the project uses that stack), any MCP's bundled design skill, any second security reviewer, any version pin |
