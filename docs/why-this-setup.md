@@ -197,10 +197,19 @@ discovery ladder is: graph → symbol lookup → targeted search → targeted re
 whole files → traversal, and you **stop at the first tier that lets you
 implement correctly**.
 
-The graph is built lazily, by a hook, once, only for repositories big enough to
-justify it, and only when a broad search is about to happen anyway — because
-building it eagerly would tax every session for a benefit most sessions do not
-need.
+So each repository has one graph. Where it has a GitNexus index, that is the
+graph: its `impact` reports whether a caller list is complete and its
+`detect_changes` maps a diff to symbols, which nothing else here does.
+GitNexus had been installed, indexed and hooked while the routing named only
+Graphify, and its concept search returned nothing because a database extension
+was missing, so it went unused. The fix is routing, the one-time repair, and a
+rule for what an empty answer means; whether sessions now use it well is not
+yet measured.
+
+Everywhere else the graph is Graphify's, built lazily, by a hook, once, only
+for repositories big enough to justify it, and only when a broad search is about
+to happen anyway — because building it eagerly would tax every session for a
+benefit most sessions do not need.
 
 ## Why the evidence ladder is written down
 
@@ -245,6 +254,15 @@ behavior away, deleting or skipping the test, a production branch for the test),
 and makes "pre-existing" a claim that needs a reproduction on an untouched
 baseline. A requirement change still allows a test change, with its reason
 stated.
+
+Writing those tests is one agent's job, `test-author`, and only when the setup
+is real work: an E2E flow, an API or database integration. Driving a running
+app or a test database produces exactly the output that should stay out of the
+main context, and an author working from the requirement is not anchored on
+the implementation it is testing. A small unit test stays inline, where the
+code is already in context. One agent, not one per level, because choosing the
+boundary is part of the job. It must show each test failing against the broken
+behavior, which is the check a test count cannot make.
 
 What this was tested on, and what that does and does not show:
 [benchmarks §11](benchmarks.md#11-test-value-policy).

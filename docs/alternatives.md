@@ -56,6 +56,19 @@ panel is small and agrees with concrete evidence.
 
 ---
 
+## Test authoring
+
+### Chosen: one `test-author` agent, invoked selectively
+
+| Alternative | Why not |
+|---|---|
+| **Separate E2E, integration and unit agents** | The boundary is a decision inside one task, not a specialty. Three agents would carry the same policy three times, and each would tend to answer at its own level. One agent picks the highest boundary that runs reliably. |
+| **Delegating every test** | A subagent re-reads the code it tests. For a small unit test the main agent already has in context, delegation costs more than it saves. It pays when the setup is real work (a running app, fixtures, a database) whose output would flood the main context, or when the tests should come from the requirement rather than from the code just written. |
+| **`test-judge` writing the tests it asks for** | It would grade its own work. Review stays read-only. |
+| **A coverage target** | The policy has none. The agent shows each test failing against the broken behavior instead. |
+
+---
+
 ## Context efficiency
 
 ### Chosen: `run-captured` + two advisory hooks + a playbook skill
@@ -73,10 +86,17 @@ panel is small and agrees with concrete evidence.
 
 ## Code intelligence
 
-### Chosen: one knowledge graph, lazily built, plus LSP
+### Chosen: one knowledge graph per repository, plus LSP
+
+GitNexus where the repository has an index, Graphify (built lazily) everywhere
+else.
 
 | Alternative | Why not |
 |---|---|
+| **Graphify everywhere, GitNexus installed but unrouted** | The previous state. GitNexus was registered, hooked and indexed for one repository, but the routing named only Graphify and listed GitNexus as a tool not to stack, and its concept search had returned nothing since indexing because a database extension was never installed. Sessions almost never called it. Where an index exists, GitNexus adds what this setup otherwise lacks: `impact` says whether a caller list is complete (`exact` or `lower-bound`) and rates the risk, and `detect_changes` maps a diff to symbols and execution flows. |
+| **A Graphify graph beside a GitNexus index** | Two graphs of one repository answer the same questions, and the bootstrap hook's nudge would send the model to the second. The hook builds nothing in a repository with `.gitnexus/` and points at GitNexus instead. |
+| **Indexing every repository with GitNexus** | Without `--index-only`, `analyze` writes into the repository's `CLAUDE.md`/`AGENTS.md` and `.claude/skills`; the index of a 92-file repository is a 19 MB database; and the tool is licensed PolyForm Noncommercial ([security.md](security.md)). Indexing stays the user's decision; Graphify stays the lazy default. |
+| **The GitNexus CLI instead of its MCP server** | The CLI-first rule is for an answer both give equally. The server is registered by the tool's own setup, its tool schemas are deferred until used, and every tool takes a `maxTokens` bound. The CLI remains the fallback where the MCP is absent. |
 | **Stacking multiple graph/semantic-search systems** | They answer the same question at multiple costs. Use a second one only when the first is insufficient or offers a distinct capability. |
 | **Eagerly indexing every repository** | Taxes every session for a benefit most sessions do not need. The bootstrap hook fires only on a broad search, only in a git repo, only above a size threshold, and caches its decision. |
 | **The graph tool's own `install` command** | It rewrites `CLAUDE.md` and installs a hook that blocks raw reads. A skill plus explicit routing gives the same navigation benefit without another component editing global config or vetoing reads. |
