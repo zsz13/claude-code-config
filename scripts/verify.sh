@@ -82,13 +82,24 @@ while IFS= read -r f; do
   fi
 done < <(find "$REPO/rules" -name '*.md' 2>/dev/null | sort)
 
+# Grep what would ship: tracked files plus untracked ones git does not ignore.
+# Git-ignored local files (.idea/, caches) never reach the repository, so they
+# are skipped. Outside a git checkout, every file is searched.
+repo_grep() {
+  if git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$REPO" ls-files -z --cached --others --exclude-standard \
+      | (cd "$REPO" && xargs -0 grep -IHn -E "$1" 2>/dev/null)
+  else
+    grep -rIn -E "$1" "$REPO" --exclude-dir=.git --exclude-dir=__pycache__ 2>/dev/null
+  fi
+}
+
 printf '\nNo personal filesystem paths or identifiers:\n'
 # A path or address that names a real machine or person must never ship. The
 # documented placeholders (/Users/<name>, /Users/... inside a prose rule) are
 # the only tolerated forms, so match a real lowercase login rather than the
 # placeholder, and exclude this script's own pattern definitions.
-leak=$(grep -rIn -E '/Users/[a-z]|/home/[a-z]|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
-        "$REPO" --exclude-dir=.git --exclude-dir=__pycache__ 2>/dev/null \
+leak=$(repo_grep '/Users/[a-z]|/home/[a-z]|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
         | grep -vE '^[^:]*/(verify|install)\.sh:|/Users/(<name>|\.\.\.)' || true)
 if [ -z "$leak" ]; then ok "no absolute home paths or email addresses"; else
   bad "found machine-specific strings:"; printf '%s\n' "$leak" | sed 's/^/        /'
@@ -97,8 +108,7 @@ fi
 printf '\nNo AI authorship or generation attribution:\n'
 # This repository is authored by its owner. Tooling is discussed on its merits;
 # nothing here may claim an AI wrote, generated, or co-authored it.
-attrib=$(grep -rIn -E 'Co-[Aa]uthored-[Bb]y|Claude-Session|[Gg]enerated (with|by) (Claude|AI|Codex|GPT)|[Mm]ade (with|by) (Claude|AI)|[Ww]ritten by (Claude|AI)|[Cc]reated by (Claude|AI)|AI-generated' \
-        "$REPO" --exclude-dir=.git --exclude-dir=__pycache__ 2>/dev/null \
+attrib=$(repo_grep 'Co-[Aa]uthored-[Bb]y|Claude-Session|[Gg]enerated (with|by) (Claude|AI|Codex|GPT)|[Mm]ade (with|by) (Claude|AI)|[Ww]ritten by (Claude|AI)|[Cc]reated by (Claude|AI)|AI-generated' \
         | grep -vE '^[^:]*/verify\.sh:' || true)
 if [ -z "$attrib" ]; then ok "no AI authorship or generation attribution"; else
   bad "found authorship attribution:"; printf '%s\n' "$attrib" | sed 's/^/        /'
@@ -149,17 +159,34 @@ if [ "$REPO_ONLY" -eq 0 ]; then
   if [ ! -d "$TARGET" ]; then
     note "target directory does not exist — nothing installed yet"
   else
+    # Only a file that is run directly needs +x: everything in bin/, and each hook
+    # the settings run without an interpreter. A script run as `python3 x.py`,
+    # bytecode, and files other tools keep beside ours (`node x.cjs`) do not.
+    direct_hooks=$'\n'$(python3 - "$REPO/config/settings.example.json" <<'PY'
+import json, sys
+for entries in json.load(open(sys.argv[1])).get("hooks", {}).values():
+    for entry in entries:
+        for h in entry.get("hooks", []):
+            first = (h.get("command") or "").split()[:1]
+            path = first[0].strip("'\"") if first else ""
+            if path.startswith("$HOME/.claude/hooks/"):
+                print(path[len("$HOME/.claude/hooks/"):])
+PY
+)$'\n'
     for c in $COMPONENTS; do
       case "$c" in
         hooks|bin|agents|rules|skills)
           src="$REPO/$c"
           [ -d "$src" ] || continue
-          n_ok=0; n_missing=0; n_diff=0
+          n_ok=0; n_missing=0; n_diff=0; n_run=0; noexec=""
           while IFS= read -r f; do
             rel="${f#"$src"/}"; dest="$TARGET/$c/$rel"
             if [ ! -e "$dest" ]; then n_missing=$((n_missing+1))
             elif cmp -s "$f" "$dest"; then n_ok=$((n_ok+1))
             else n_diff=$((n_diff+1)); fi
+            if [ -e "$dest" ] && { [ "$c" = "bin" ] || [[ "$direct_hooks" == *$'\n'"$rel"$'\n'* ]]; }; then
+              n_run=$((n_run+1)); [ -x "$dest" ] || noexec="$noexec $rel"
+            fi
           done < <(find "$src" -type f -not -name '*.pyc' -not -name 'README.md' | sort)
           if [ "$n_missing" -eq 0 ] && [ "$n_diff" -eq 0 ]; then
             ok "$c — $n_ok/$n_ok files installed and identical"
@@ -169,11 +196,8 @@ if [ "$REPO_ONLY" -eq 0 ]; then
             bad "$c — $n_ok identical, $n_diff differ, $n_missing missing"
           fi
           if [ "$c" = "hooks" ] || [ "$c" = "bin" ]; then
-            noexec=""
-            while IFS= read -r f; do
-              [ -e "$f" ] && [ ! -x "$f" ] && noexec="$noexec $(basename "$f")"
-            done < <(find "$TARGET/$c" -type f -not -name 'README.md' 2>/dev/null | sort)
-            if [ -n "$noexec" ]; then bad "$c — not executable:$noexec"; else ok "$c — all installed files are executable"; fi
+            if [ -n "$noexec" ]; then bad "$c — run directly but not executable:$noexec"
+            else ok "$c — all $n_run directly run files are executable"; fi
           fi
           ;;
         settings)
