@@ -35,9 +35,11 @@ authorization check is high-risk.
 ## 2. Produce deterministic evidence first
 
 Run the checks that apply — build, tests, type check, lint, static analysis —
-**before** dispatching judges, and put the results in the packet. Judges are
-read-only and cannot run anything; they interpret evidence, they do not generate
-it. Reviewing a change whose build is broken wastes a jury.
+**before** dispatching judges, and put the results in the packet. For a
+substantial product or workflow change, that includes the runtime check: the
+app or service started and the changed flow driven end to end (`Runtime:` in
+the packet). Judges are read-only and cannot run anything; they interpret
+evidence, they do not generate it. Reviewing a change whose build is broken wastes a jury.
 
 ## 3. Dispatch blind, in parallel
 
@@ -48,7 +50,7 @@ other. Each gets its own packet containing only:
 - the diff, with its base clearly identified;
 - the relevant code paths (paths, or a bounded excerpt — not the repository);
 - the relevant tests;
-- the deterministic verification output.
+- the deterministic and runtime verification output.
 
 Withhold, for every judge:
 

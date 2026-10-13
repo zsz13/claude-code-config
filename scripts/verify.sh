@@ -127,6 +127,33 @@ while IFS= read -r f; do
 done < <(find "$REPO" -name '*.md' -not -path '*/.git/*' | sort)
 [ "$broken" -eq 0 ] && ok "all relative markdown links resolve"
 
+# unresolved ROOT CLAUDE_MD — the CLAUDE.md sections that rules, agents and skills
+# under ROOT name, and the packet fields judges read, that do not exist. A rule
+# that defers to a section, or a judge that reads a field, points at nothing once
+# that heading or field is renamed, or when CLAUDE.md predates it.
+unresolved() {
+  python3 - "$1" "$2" <<'PY'
+import pathlib, re, sys
+root, claude_md = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+read = lambda p: p.read_text(errors="replace") if p.is_file() else ""
+claude, packet = read(claude_md), read(root / "skills/adversarial-jury/packet-template.md")
+for f in sorted(p for d in ("rules", "agents", "skills") for p in (root / d).rglob("*.md")):
+    text = re.sub(r"\s+", " ", read(f))
+    for name in re.findall(r'"([^"]+)" in `CLAUDE\.md`', text):
+        if not re.search(rf"^#+ {re.escape(name)}[ \t]*$", claude, re.M):
+            print(f'{f.relative_to(root)}: section "{name}" missing from {claude_md.name}')
+    for field in re.findall(r"packet's `([^`:]+):` line", text):
+        if not re.search(rf"^{re.escape(field)}:", packet, re.M):
+            print(f"{f.relative_to(root)}: packet field {field}: missing")
+PY
+}
+
+printf '\nNamed CLAUDE.md sections and packet fields exist:\n'
+refs=$(unresolved "$REPO" "$REPO/examples/CLAUDE.example.md")
+if [ -z "$refs" ]; then ok "every named section and packet field exists"; else
+  bad "references with no target:"; printf '%s\n' "$refs" | sed 's/^/        /'
+fi
+
 printf '\nSettings example is self-consistent:\n'
 python3 - "$REPO" <<'PY'
 import json, pathlib, re, sys
@@ -151,6 +178,15 @@ if missing:
 print(f"  \033[32mPASS\033[0m  all {checked} hook commands resolve to shipped files")
 PY
 if [ $? -eq 0 ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
+
+printf '\nSkill-install guard decides its regression table as expected:\n'
+# The guard reads command text, so a refactor can silently stop it asking. The
+# table pins every form it was tested on, including an adversarial review's.
+if out=$(python3 "$REPO/scripts/test_skill_install_guard.py" "$REPO/hooks/skill-install-guard.sh" 2>&1); then
+  ok "${out##*$'\n'}"
+else
+  bad "skill-install-guard.sh:"; printf '%s\n' "$out" | sed 's/^/        /'
+fi
 
 # ---------- installed-target checks ----------
 
@@ -231,6 +267,11 @@ PY
           ;;
       esac
     done
+    # CLAUDE.md is copied by hand, so installed rules can outrun it.
+    refs=$(unresolved "$TARGET" "$TARGET/CLAUDE.md")
+    if [ -z "$refs" ]; then ok "CLAUDE.md — has every section the installed files name"; else
+      note "CLAUDE.md — copy these sections from examples/CLAUDE.example.md:"; printf '%s\n' "$refs" | sed 's/^/        /'
+    fi
   fi
 fi
 

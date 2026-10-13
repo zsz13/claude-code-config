@@ -34,8 +34,10 @@ AI-tool configuration. Test the installer against a temporary directory with
 It checks that shell scripts parse, Python compiles, JSON and TOML parse, skills
 and agents have `name`/`description` frontmatter, every rule declares a `paths:`
 glob list, every relative markdown link resolves, no absolute home path or email
-address is present, and that every hook command in `settings.example.json`
-points at a file this repository actually ships.
+address is present, every hook command in `settings.example.json` points at a
+file this repository actually ships, every `CLAUDE.md` section a file names and
+every packet field a judge reads exists, and that the skill-install guard still
+decides its regression table (`scripts/test_skill_install_guard.py`) as expected.
 
 **Nothing machine-specific.** No `/Users/...`, no `/home/...`, no usernames, no
 email addresses, no private repository names, no hostnames, no tokens. Use
@@ -69,7 +71,8 @@ number that is not reproducible from data a reader can inspect.
 - Conventional Commits (`feat:`, `docs:`, `fix:`, `chore:`).
 - Shell: POSIX `sh` for the hook wrappers, `bash` for the scripts; classifiers
   and tools in Python 3.11+ with only the standard library.
-- Hooks fail open. The only exceptions are the two deny-guards, which fail open
-  on a parse error and deny only on a positive match.
+- Hooks fail open. The only exceptions are the two deny-guards and the
+  skill-install guard, which fail open on a parse error and deny (the skill guard:
+  ask) only on a positive match.
 - Documentation says *why*, not just *what*. A component without a rationale in
   `docs/` is undocumented no matter how many comments it has.

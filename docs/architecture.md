@@ -34,12 +34,12 @@ all three when the guidance is only needed at the moment of a specific action.
 
 ### 1. `CLAUDE.md` — universal policy (always loaded)
 
-About 185 lines. Holds only what is true for every language, every repository,
+About 245 lines. Holds only what is true for every language, every repository,
 every task: how to understand code before editing it, the discovery ladder
 (knowledge graph → symbol lookup → targeted search → targeted reads → whole
 files → traversal), large-output handling, minimal-change discipline, the
-evidence ladder, quality gates, review policy, subagent policy, context health,
-and safety.
+evidence ladder, quality gates, review policy, subagent policy, skills on
+demand, context health, and safety.
 
 Deliberately *not* here: stack-specific conventions, tool commands, per-project
 architecture. Those go one layer down.
@@ -100,7 +100,7 @@ one lens and is explicitly told what its own evidence cannot prove.
 |---|---|---|
 | `spec-judge` | Does the change satisfy the original requirement? | opus / high |
 | `correctness-adversary` | Actively tries to falsify the implementation | opus / high |
-| `test-judge` | What does the test suite fail to prove? | sonnet / high |
+| `test-judge` | What does the test suite fail to prove, and which tests add nothing? | sonnet / high |
 | `architecture-judge` | Structural and long-term maintenance cost | opus / high |
 | `security-judge` | Trust boundaries and reachable exploit paths | opus / high |
 | `jury-arbiter` | Resolves conflicts by evidence, never by vote | opus / xhigh |
@@ -116,13 +116,15 @@ measured result.
 
 ### 6. `hooks/` — deterministic guards and advisors (executed, never loaded)
 
-Seven user-authored hooks. Two block; five advise. All fail open except the two
-guards, which fail open on parse errors but deny on a positive match.
+Eight user-authored hooks. Two block, one asks for approval, five advise. All
+fail open except the three guards, which fail open on parse errors but deny (or
+ask) on a positive match.
 
 | Hook | Event | Behavior |
 |---|---|---|
 | `block-destructive-iac.sh` | PreToolUse(Bash) | **Denies** `terraform`/`tofu` apply, destroy, import, taint, force-unlock, `state mv/rm/push`. Read-only operations always pass. |
 | `block-git-no-verify.sh` + `.py` | PreToolUse(Bash) | **Denies** `git commit/push/merge/rebase --no-verify`, `commit -n`, `-c core.hooksPath=`, and setting `core.hooksPath`. Parsed with `shlex`, so `-n` inside a quoted commit message is not a flag. |
+| `skill-install-guard.sh` + `.py` | PreToolUse(Bash\|Write\|Edit\|MultiEdit\|NotebookEdit) | **Asks** before `skills add/update/remove`, `claude plugin install/update/...`, any write into `.claude/skills`, `.agents/skills`, `.codex/skills`, `.claude/commands` or `.claude/plugins` (file tools or shell), and a settings edit that enables a plugin. `skills find`, `skills use` and reads pass. |
 | `large-output-advisor.sh` + `.py` | PreToolUse(Bash) | One-line hint for a command class about to dump a large deterministic output. At most once per session per class. |
 | `read-budget-advisor.sh` + `.py` | PreToolUse + PostToolUse(Read\|Bash) | Hints on re-reading an unchanged file, and on whole-file reads of large files. State keyed by session **and** agent id. |
 | `read-budget-reset.sh` | SessionStart(compact\|clear) | Clears that state so post-compaction reads are never flagged as re-reads. |

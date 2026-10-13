@@ -108,9 +108,10 @@ hook. It was considered and rejected:
   and its only job is to *remove* state, never to create it.
 
 So the triggers are **semantic rules the model evaluates**, and the hooks are
-reserved for the two things a hook is genuinely good at: deterministic denial
-(`block-destructive-iac.sh`, `block-git-no-verify.sh`) and cheap just-in-time
-hints (the two advisors).
+reserved for the things a hook is genuinely good at: deterministic denial
+(`block-destructive-iac.sh`, `block-git-no-verify.sh`), a deterministic approval
+prompt (`skill-install-guard.sh`), and cheap just-in-time hints (the two
+advisors).
 
 ## Why instructions rather than hooks
 
@@ -214,6 +215,40 @@ rule violation rather than a judgement call, and it is what
 Its corollaries are deliberately uncomfortable: **agreement among reviewers is
 not proof**, and **neither is a passing test suite**.
 
+## Why tests are chosen for the confidence they add
+
+A suite proves only the behavior whose breakage one of its tests would catch.
+More tests are not more proof, and several defaults this setup composes rewarded
+count:
+
+- `superpowers:test-driven-development`'s checklist asks for a test for every
+  new function or method.
+- `rules/tests.md` sent all new behavior to test-first, but it is path-scoped: it
+  loads only once a test file is touched, after the decision to write a test has
+  been made.
+- `test-judge` could only ask for more tests.
+- The jury packet had no slot for runtime evidence, so a reviewer saw a green
+  suite and never learned whether anyone had run the app.
+
+So the decision about whether to test, and where, moved into always-loaded
+`CLAUDE.md` ("Verification and test value"), before any test file exists. It
+scales verification to the change: a small fix keeps the existing checks, and a
+product or workflow change needs the app run and the flow driven. Tests go only
+where they protect something, at the highest boundary that runs reliably, except
+that a pure rule or algorithm is still best served by a table-driven unit test.
+`rules/tests.md` keeps the how. `test-judge` starts from the packet's `Runtime:`
+line and may recommend deleting, merging or replacing a test.
+
+The same section names each way of turning a red test green without fixing
+anything (weakening an assertion, rewriting an expected value, mocking the
+behavior away, deleting or skipping the test, a production branch for the test),
+and makes "pre-existing" a claim that needs a reproduction on an untouched
+baseline. A requirement change still allows a test change, with its reason
+stated.
+
+What this was tested on, and what that does and does not show:
+[benchmarks §11](benchmarks.md#11-test-value-policy).
+
 ## Why the judges are blind and parallel
 
 A reviewer who can see the implementer's reasoning is a worse reviewer:
@@ -252,9 +287,38 @@ Terraform operations are never blocked.
 Both guards name themselves and say how to disable them in the denial message. A
 guard the user cannot understand or remove is a trap.
 
+## Why skills are used on demand and installed by decision
+
+A skill is instructions that load whenever their description matches, in every
+later session. Installing one is a standing change to the agent's behavior, and
+the ecosystem makes it easy to do by accident: the `skills` CLI detects an agent
+and installs without prompting, and `find-skills`-style skills tell the agent to
+install globally with `-y` once a search succeeds.
+
+So finding and using a skill is free, and keeping one is the user's call:
+
+- `npx skills find` and `npx skills use` are pre-allowed in
+  `settings.example.json`. `use` prints a skill as a prompt for the current task
+  and writes nothing, which covers "this task needs a specialised procedure"
+  without a standing change.
+- The policy in `CLAUDE.md` says when to search (a specialised task that would
+  materially benefit), to prefer official sources and read the skill first, to
+  avoid duplicates and conflicts, and to propose installing only after a skill
+  has proved useful repeatedly.
+- `skill-install-guard` turns every install path it can see into a permission
+  prompt. It *asks* instead of denying, because an install the user wants is
+  legitimate and should cost one answer, not a hook removal. It covers file
+  writes as well as the CLI, because a session that cannot install tends to
+  write the files itself: that happened once in testing
+  ([benchmarks §10](benchmarks.md#10-skill-discovery-and-the-install-guard)).
+
+The `find-skills` skill itself is not installed: its trigger is broad and its
+instructions end in a global, unprompted install. The two commands it teaches
+are in the policy instead.
+
 ## Why every advisory hook fails open
 
-The two guards deny on a positive match. Everything else — both advisors, the
+The two deny-guards deny, and the skill guard asks, on a positive match. Everything else — both advisors, the
 graph bootstrap, the ponytail guard — exits 0 and emits nothing on any error,
 timeout, or parse failure.
 

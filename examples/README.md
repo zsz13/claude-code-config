@@ -8,12 +8,13 @@ before adopting them, and delete what does not apply to you.
 
 ## `CLAUDE.example.md` → `~/.claude/CLAUDE.md`
 
-Universal engineering policy, about 185 lines. Loads in **every session,
+Universal engineering policy, about 245 lines. Loads in **every session,
 everywhere**.
 
 Contents: understanding code before editing it, the discovery ladder,
-large-output handling, minimal-change discipline, the evidence ladder, quality
-gates, review policy, subagent policy, context health, and safety.
+large-output handling, minimal-change discipline, the evidence ladder,
+verification and test value, quality gates, review policy, subagent policy,
+skills on demand, context health, and safety.
 
 ### What you must customise
 
@@ -23,6 +24,7 @@ gates, review policy, subagent policy, context health, and safety.
 | `~/.claude/rules/` | Same. |
 | Graphify routing section | Delete it entirely if you do not use a knowledge graph. It is about 20 lines of always-loaded text for a tool you may not have. |
 | Named skills | Remove references to any skill you did not install, so the model is not told to invoke something absent. |
+| "Skills on demand" section | It names the `skill-install-guard` hook. Drop that sentence if you did not install the hook, and drop the section if you do not use the `skills` CLI. |
 | Tool names in "Quality gates" | The policy (one owner per job, no bypassing hooks) generalises; the specific tools may not be yours. |
 
 ### What to keep if you keep anything

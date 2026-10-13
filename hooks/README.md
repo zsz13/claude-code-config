@@ -11,6 +11,7 @@ Register them in `settings.json` — see
 |---|---|---|---|
 | `block-destructive-iac.sh` | PreToolUse(Bash) | **yes** | `python3` |
 | `block-git-no-verify.sh` + `.py` | PreToolUse(Bash) | **yes** | `python3` |
+| `skill-install-guard.sh` + `.py` | PreToolUse(Bash\|Write\|Edit\|MultiEdit\|NotebookEdit) | **asks** | `python3` |
 | `large-output-advisor.sh` + `.py` | PreToolUse(Bash) | no | `python3` |
 | `read-budget-advisor.sh` + `.py` | Pre+PostToolUse(Read\|Bash) | no | `python3` |
 | `read-budget-reset.sh` | SessionStart(compact\|clear) | no | `jq` optional |
@@ -38,6 +39,51 @@ shell function, a script file, a command built from a variable) will not match.
 They stop the obvious mistake, not a determined bypass. Neither knows about
 `pulumi`, `cdk deploy`, `kubectl delete`, `aws` CLI mutations, or `helm
 uninstall` — extend them if you use those.
+
+## The one that asks
+
+**`skill-install-guard.sh` + `.py`** returns `permissionDecision: "ask"`: the
+action waits for the user's answer in the normal permission prompt. It fires
+before any persistent skill or plugin change:
+
+- `skills add`/`update`/`remove`/`experimental_install`/`experimental_sync`,
+  bare or through `npx`, `bunx`, `pnpm dlx` or `npm exec`, and `add-skill`;
+- `claude plugin install`/`update`/`uninstall`/`enable`/`disable`/`init`/`prune`
+  and `claude plugin marketplace add`/`remove`/`update`;
+- `Write`/`Edit`/`MultiEdit`/`NotebookEdit` of a file under `.claude/skills`,
+  `.agents/skills`, `.codex/skills`, `.claude/commands` or `.claude/plugins`, at
+  any depth and in any letter case, in a project or in your home directory, and
+  of a Claude Code `settings.json` when the new text sets `enabledPlugins` or
+  `extraKnownMarketplaces`;
+- a shell command that writes there: `cp`/`mv`/`ln`/`rsync`/`scp`/`degit` into
+  it (including `cp -r skills ~/.claude/`), `mkdir`/`rm`/`tee`/`unzip`/`curl -o`
+  on it, `tar -x`, `git clone`/`pull`, `gh repo clone`, `sed -i`, `find -delete`
+  or `-exec`, a `>` redirection, or any of those after a `cd` into one. Line
+  continuations, shell keywords (`for … do`, `if … then`), wrappers (`sudo`,
+  `env`, `timeout`, `xargs`) and `sh -c` strings are looked through.
+
+Text that only mentions a command is data, as it is to the shell. Examples are a
+PR or issue body, a commit message, a document written by a here-doc, `echo`
+text, or a comment. A here-doc fed to a shell (`bash <<EOF`, `ssh host <<EOF`) is
+a script and is checked. `$(…)` or backticks outside single quotes are run, so
+they are checked too, including inside double quotes and unquoted here-docs.
+
+The prompt says what would be installed and where; for `skills add -g` that is
+every detected agent's skill directory, `~/.claude/skills` included. A refused
+install recreated by hand (the Write tool, `cp`, `mkdir`) is asked about again,
+and the policy in `CLAUDE.md` says not to try. Never asked about:
+`skills find`, `skills use` (prints a skill without installing it), `skills add
+--list`, `claude plugin list`, reading any of those directories, and this
+repository's own `skills/` (no leading dot). It asks rather than denies because
+an install the user wants is legitimate; the rationale is in
+[docs/why-this-setup.md](../docs/why-this-setup.md#why-skills-are-used-on-demand-and-installed-by-decision).
+The same "not a sandbox" limit applies. It reads command text, so a path built
+at run time (a variable, a glob, `$(…)`), a script file, an interpreter
+(`python -c`, `node -e`, or a here-doc fed to one), `jq` rewriting
+`settings.json`, or a download tool it does not know is not caught. Every form
+it was tested on, ask or not, is a row
+in [`scripts/test_skill_install_guard.py`](../scripts/test_skill_install_guard.py),
+which `scripts/verify.sh` runs.
 
 ## The five that advise
 
