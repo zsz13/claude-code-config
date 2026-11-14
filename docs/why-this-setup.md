@@ -287,6 +287,70 @@ Terraform operations are never blocked.
 Both guards name themselves and say how to disable them in the denial message. A
 guard the user cannot understand or remove is a trap.
 
+## Why local-first CI, and what is actually enforced
+
+The failure this addresses was seen in this setup's own use (Observed, not
+measured; see [benchmarks §12](benchmarks.md#12-local-first-ci)): an agent that
+treats remote CI as its test runner commits, pushes, waits, reads the failure, pushes a
+guess, and repeats. Each round spends runner minutes, often twice (a branch with
+both `push` and `pull_request` triggers), and minutes are a monthly budget. The
+earlier configuration said "before pushing, run the repository's full gate" and
+nothing else: no record of what ran, no tie between a check and the content it
+checked, nothing at the moment of `git push`, and no answer for checks that only
+exist inside a workflow file.
+
+**Evidence bound to content.** A check is worth something only for the content
+it ran on. `local-ci` records results against a fingerprint of every tracked
+and untracked, non-ignored file (path, mode, git blob id, computed without
+writing to the repository). Committing exactly what was validated keeps the
+evidence; any later edit, or a partial commit, makes it stale. That makes "it
+passed earlier" impossible to reuse by accident, and it lets an unchanged check
+be skipped instead of rerun. What the gate proves is deliberately narrow:
+exactly this content has recorded passing evidence and no unresolved failure.
+Which checks count as the repository's required gate is not knowable from
+outside the repository, so that stays policy (the skill's order, the report
+naming what ran). Commits are not gated: they are local and cost nothing, and
+gating them would punish the small, frequent commits that make review easier.
+
+**Why a deny hook here, when most of this setup prefers instructions.** The
+trigger is not semantic: `git push` and `gh pr create` are recognisable, and the
+question asked at that moment — "has this content passed?" — has a deterministic
+answer on disk. A hook is the right tool exactly when both hold (see
+[Why instructions rather than hooks](#why-instructions-rather-than-hooks)). What
+remains semantic — *which* checks are relevant, whether act adds anything —
+stays in the skill and `CLAUDE.md`.
+
+**Why text-matching is not the whole answer.** A PreToolUse hook reads command
+text. It looks through wrappers (`sh -c`, `sudo`, `env`, `timeout`, `$(…)`,
+`cd`, `git -C`) by reusing the skill-install guard's scanner rather than a
+second parser, but a script that pushes is invisible to it. Git itself is the
+only place every push passes through, so `local-ci hook install` adds a
+`pre-push` hook. It does so only where nothing is lost: a repository with its
+own pre-push hook or a `core.hooksPath` (husky, lefthook, a team directory) is
+left untouched and given the line to add to its own manager. A global
+`core.hooksPath` would have been simpler and would silently disable every
+repository's own hooks; the no-verify guard denies setting it for that reason.
+The pre-push gate enforces only in agent sessions (`CLAUDECODE`), so it never
+changes how the owner pushes.
+
+**Why act, and why only sometimes.** Some checks exist only in a workflow file:
+a matrix leg, a service container, a script nothing else calls. nektos/act runs
+those jobs from the workflow itself, so nothing is duplicated. But a job that
+runs `npm test` is cheaper as `npm test`, act's images approximate GitHub's
+runners, and a job that needs secrets cannot run honestly at all. So act is used
+where it adds evidence, never required where the repository has no workflows,
+never handed a token, `.env` or Docker socket, and never allowed near a deploy,
+release or publish job. Its environment failures (no daemon, image pull, clone)
+are recorded as *unsupported*, never as a test failure and never as a pass; a
+failed step is never relabelled environmental.
+
+**What no configuration can do.** Whether a push triggers remote CI is decided
+by the repository's `.github/workflows`, not by anything in `~/.claude`. This
+setup reduces how often an agent pushes and makes each push count; reducing
+what each push costs (duplicate triggers, concurrency, path filters, caching,
+tiering) is a change to each repository, listed in the `local-ci` skill §7, and
+made only in the repository being worked on.
+
 ## Why skills are used on demand and installed by decision
 
 A skill is instructions that load whenever their description matches, in every
@@ -318,7 +382,7 @@ are in the policy instead.
 
 ## Why every advisory hook fails open
 
-The two deny-guards deny, and the skill guard asks, on a positive match. Everything else — both advisors, the
+The three deny-guards deny, and the skill guard asks, on a positive match. Everything else — both advisors, the
 graph bootstrap, the ponytail guard — exits 0 and emits nothing on any error,
 timeout, or parse failure.
 
@@ -338,6 +402,10 @@ almost nothing.
   composition, real motion) and rules out defaults (a flat grey dashboard, a
   dark console), but names no palette, typeface or layout, and a request, a
   system or a brief overrides it.
+- It does not change any repository's CI triggers, required checks or branch
+  protection to save Actions minutes, and it cannot stop a repository's
+  workflows from running on push. It changes how often, and how prepared, an
+  agent pushes.
 - It does not pin tool or language versions in global config. Versions are
   chosen at project creation or at a deliberate upgrade, by checking what is
   current *then*.

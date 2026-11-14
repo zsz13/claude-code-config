@@ -53,7 +53,7 @@ Options:
 
 Components:
   hooks     PreToolUse/PostToolUse/Stop guards and advisors -> <target>/hooks/
-  bin       run-captured large-output helper                -> <target>/bin/
+  bin       run-captured and local-ci helpers               -> <target>/bin/
   agents    reviewer subagent definitions                   -> <target>/agents/
   rules     path-scoped language/stack rules                -> <target>/rules/
   skills    procedure skills                                -> <target>/skills/

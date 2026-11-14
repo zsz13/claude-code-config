@@ -28,6 +28,10 @@ import re
 import shlex
 import sys
 
+# Also imported by local-ci-gate.py, which reads shell text with scan(), segments(), effective_argv(),
+# resolve(), SHELLS and SHELL_C. Changing their signatures changes that deny-guard too:
+# scripts/test_local_ci.py exercises it through scripts/verify.sh.
+
 SEG = re.compile(r"\|\||&&|\||;|\n|\(|\)|\$\(|`")
 REDIRECT = re.compile(r">>?\|?\s*([^\s;&|<>()]+)")
 HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([^\s;&|<>()'\"]+))")

@@ -174,6 +174,17 @@ are not goals.
   (a hook enforces this). Bypass only when the user explicitly asks or the hook
   is provably broken, and say so.
 
+## Local-first CI
+
+- Remote CI is final verification, not a debugger. Before a push, a PR or a
+  remote workflow run, the full gate from Quality gates runs locally, recorded with
+  `~/.claude/bin/local-ci run` for the exact content published (the
+  `local-ci-gate` hook denies publishing without it; procedure, act and CI cost:
+  the `local-ci` skill).
+- Never push a speculative fix to see whether CI passes: reproduce a remote
+  failure locally, fix, revalidate, push once. A check that cannot run here is
+  reported unverified, never passed; a passing `act` run is partial evidence.
+
 ## Review
 
 - Do not be the sole reviewer of your own non-trivial work.

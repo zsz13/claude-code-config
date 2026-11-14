@@ -11,6 +11,7 @@ Register them in `settings.json` — see
 |---|---|---|---|
 | `block-destructive-iac.sh` | PreToolUse(Bash) | **yes** | `python3` |
 | `block-git-no-verify.sh` + `.py` | PreToolUse(Bash) | **yes** | `python3` |
+| `local-ci-gate.sh` + `.py` | PreToolUse(Bash) | **yes** | `python3`, `git`, `../bin/local-ci`, `skill-install-guard.py` |
 | `skill-install-guard.sh` + `.py` | PreToolUse(Bash\|Write\|Edit\|MultiEdit\|NotebookEdit) | **asks** | `python3` |
 | `large-output-advisor.sh` + `.py` | PreToolUse(Bash) | no | `python3` |
 | `read-budget-advisor.sh` + `.py` | Pre+PostToolUse(Read\|Bash) | no | `python3` |
@@ -18,7 +19,7 @@ Register them in `settings.json` — see
 | `graphify-lazy-init.py` | PreToolUse(Grep\|Glob\|Bash) | no | `graphify`, `git` |
 | `ponytail-guard.sh` | Stop, SessionEnd | no | `bash` |
 
-## The two that block
+## The three that block
 
 **`block-destructive-iac.sh`** denies `terraform`/`tofu` `apply`, `destroy`,
 `import`, `taint`, `untaint`, `force-unlock`, and `state mv|rm|push|replace-provider`
@@ -33,7 +34,30 @@ core.hooksPath <value>`. Commands are parsed with `shlex` per shell segment, so
 `-n` inside a quoted commit message is not treated as a flag. `--get`/`--unset`/
 `--list` on that key are allowed.
 
-Both explain themselves in the denial message and say how to remove them. They
+**`local-ci-gate.sh` + `.py`** denies a command that publishes work or starts
+remote CI — `git push`, `gh pr create`, `gh pr ready`, `gh pr update-branch`,
+`gh workflow run`, `gh run rerun`, `gh release create`, `gh api …/dispatches` —
+while the content it would publish has no passing local validation recorded by
+[`bin/local-ci`](../bin/local-ci). It asks `local-ci gate` about the refs the
+push sends (its source refs, every branch for `--all`, `--mirror` or the
+matching refspec `:`, every tag for `--tags`; default `HEAD`), in the directory
+`-C`, `--git-dir`, `cd` or `pushd` names; when a `cd` sits in a subshell or is
+undone by `popd`, the session's own directory is checked as well. Evidence is keyed by the
+committed tree's content, so a check that passed before the last edit does not
+count, and a failure blocks until that same check passes. `git push --dry-run`,
+deletion-only pushes, `gh pr ready --undo` and anything outside a git work tree
+pass. It reads shell text with `skill-install-guard.py`'s
+scanner (here-docs and comments are data; `sh -c`, `$(…)`, `cd`, `git -C` and
+wrappers are looked through), so both files must be installed together. When
+the push is allowed but some checks were recorded unsupported, it adds one line
+naming them, so the report cannot drop them. If it cannot load the scanner or
+find `local-ci`, it allows the command and says so in one line. For pushes the text never shows (a
+script, an alias), `local-ci hook install` adds a git `pre-push` hook to a
+repository that has none, enforced only in agent sessions; it never replaces a
+hook or `core.hooksPath`. Rationale:
+[docs/why-this-setup.md](../docs/why-this-setup.md#why-local-first-ci-and-what-is-actually-enforced).
+
+All three explain themselves in the denial message and say how to remove them. They
 are **not a sandbox**: they match command text, so an indirect invocation (a
 shell function, a script file, a command built from a variable) will not match.
 They stop the obvious mistake, not a determined bypass. Neither knows about
