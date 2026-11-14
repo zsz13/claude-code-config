@@ -20,6 +20,10 @@ re-validate
 adversarial jury         ← non-trivial or high-risk changes
    ↓
 report
+   ↓
+publish                  ← only with local evidence for the exact content
+   ↓
+remote CI                ← final verification, not the debugger
 ```
 
 ## Why this order
@@ -158,6 +162,20 @@ authorization check is high-risk.
 is correlated rather than independent — three reviewers repeating an unsupported
 claim do not make it supported, and one reviewer with a reproducible
 counterexample outweighs four dissenting opinions.
+
+## Stage 4 — Publish
+
+Skill: [`skills/local-ci`](../skills/local-ci/SKILL.md). Hook:
+[`hooks/local-ci-gate.sh`](../hooks/local-ci-gate.sh).
+
+Validation above is recorded with `local-ci run`, so by the time of a push the
+evidence exists and names the content it covers. A push, a PR, or a remote
+workflow run is allowed when exactly the pushed content has a recorded passing
+check and no unresolved failure; the hook denies it otherwise. The hook cannot
+tell whether the right checks ran; the validate stage above decides that. Simplifications and jury fixes change the
+content, so the final re-validation is what makes the push possible, not a
+formality. Remote CI then runs once, as confirmation. A remote failure goes back
+to the top of this pipeline locally, never to another speculative push.
 
 ---
 

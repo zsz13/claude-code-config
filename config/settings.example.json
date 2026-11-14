@@ -31,6 +31,16 @@
         ]
       },
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/local-ci-gate.sh",
+            "timeout": 60
+          }
+        ]
+      },
+      {
         "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {

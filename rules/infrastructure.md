@@ -29,3 +29,7 @@ paths:
 - Pin base images and third-party CI actions; run containers as non-root; give CI
   jobs the minimum `permissions`; never interpolate untrusted event input into a
   shell step.
+- Workflow triggers, concurrency, path filters, caching and tiering decide what
+  remote CI costs; the checklist is in the `local-ci` skill. Never save minutes
+  with `[skip ci]`, a disabled required check, or a branch-protection change.
+  Test a workflow change with `local-ci act` before pushing it.

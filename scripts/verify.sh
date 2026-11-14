@@ -52,7 +52,7 @@ while IFS= read -r f; do
   else
     bad "${f#"$REPO"/} — does not compile"
   fi
-done < <( { find "$REPO" -name '*.py' -not -path '*/.git/*'; printf '%s\n' "$REPO/bin/run-captured"; } | sort -u)
+done < <( { find "$REPO" -name '*.py' -not -path '*/.git/*'; printf '%s\n' "$REPO/bin/run-captured" "$REPO/bin/local-ci"; } | sort -u)
 
 printf '\nJSON examples parse:\n'
 while IFS= read -r f; do
@@ -186,6 +186,15 @@ if out=$(python3 "$REPO/scripts/test_skill_install_guard.py" "$REPO/hooks/skill-
   ok "${out##*$'\n'}"
 else
   bad "skill-install-guard.sh:"; printf '%s\n' "$out" | sed 's/^/        /'
+fi
+
+printf '\nLocal-first CI gate holds its regression scenarios:\n'
+# Throwaway repositories with stubbed act, docker and gh, pushes only to a local
+# bare repository: evidence, staleness, act classification, hooks, installer.
+if out=$(python3 "$REPO/scripts/test_local_ci.py" 2>&1); then
+  ok "${out##*$'\n'}"
+else
+  bad "local-ci:"; printf '%s\n' "$out" | sed 's/^/        /'
 fi
 
 # ---------- installed-target checks ----------

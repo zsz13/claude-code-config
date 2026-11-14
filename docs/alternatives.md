@@ -202,6 +202,23 @@ from its HTTPS endpoint.
 
 ---
 
+## CI cost
+
+### Chosen: a content-keyed evidence gate, act where it adds evidence, repository changes proposed per repository
+
+| Alternative | Why not |
+|---|---|
+| **Instructions only ("run the full gate before pushing")** | That was the previous state. Nothing recorded what ran or for which content, and nothing acted at the moment of the push, which is where the habit of pushing to see shows up. |
+| **Always run every workflow through act before a push** | Slow, image-heavy, and often less faithful than the repository's own commands. Jobs needing secrets or macOS cannot run honestly at all. act is used where the workflow is the only definition of a check. |
+| **A global `core.hooksPath` with a pre-push hook** | Silently replaces every repository's own hooks (pre-commit, husky, lefthook). The per-repository hook is installed only where none exists. |
+| **A `git` wrapper first on `PATH`** | Changes `git` for every program and every user session, and is defeated by an absolute path anyway. |
+| **Time-based evidence ("passed in the last hour")** | An edit a minute later is not covered by a check a minute earlier. Content fingerprints are exact and cost one `git status` plus hashing of the changed files. |
+| **`[skip ci]`, fewer required checks, edited branch protection** | Saves minutes by removing the check, not the waste. Remote CI stays the authority; only the number of failed rounds goes down. |
+| **Rewriting every repository's workflows from here** | A configuration repository must not edit unrelated repositories' CI. The cost checklist is in the `local-ci` skill, applied in the repository being worked on, as its own reviewed change. |
+| **PyYAML for workflow parsing** | A dependency in a standard-library toolset for a classification that is heuristic anyway; a small indentation parser reads the keys that matter and says it is heuristic. |
+
+---
+
 ## Tooling policy
 
 ### Chosen: one owner per job, no global version pins

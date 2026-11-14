@@ -1,0 +1,1258 @@
+#!/usr/bin/env python3
+"""local-ci: local-first validation evidence, and GitHub Actions jobs run locally with act.
+
+    local-ci plan [--json]                       what this repository checks, and how to run it here
+    local-ci run [--name N] [--force] -- CMD...  run a check; record its result for this exact tree
+    local-ci unsupported --name N --reason TEXT  record a check that cannot run here (never a pass)
+    local-ci act [--workflow F] [--job J]... [--event E] [--list] [--platform L=IMAGE]... [--docker-socket]
+    local-ci status [--json]                     evidence for the working tree and for HEAD
+    local-ci gate [--rev REV]... [--json]        exit 0 only when every REV (default HEAD) is publishable
+    local-ci pre-push                            git pre-push entry point (enforced in agent sessions)
+    local-ci hook install|print                  wire pre-push into this repository without replacing hooks
+
+Evidence is keyed by a fingerprint of tree content: every tracked and untracked, non-ignored file
+(path, mode, git blob id). Validating uncommitted work and then committing all of it keeps the
+fingerprint; any further edit, or committing only part of it, changes it, so old evidence never
+covers new content; an untracked file present during a check but left out of the commit makes the
+evidence cover different content too. A rev is publishable when exactly its committed tree has at
+least one passing check and no check that failed or modified the tree without passing since. A check
+is identified by its name, command and directory, so another command under a failed check's name
+does not clear it, and an unsupported result never does. Unsupported checks are reported, never
+counted as passes. What the gate cannot know is whether the right checks were run: that is policy.
+
+Exit: 0 pass/publishable, 1 failure/not publishable, 2 usage error, 3 nothing ran (unsupported,
+unavailable). State: $LOCAL_CI_STATE_DIR, else ~/.cache/claude-hooks/local-ci (records older than 30
+days are pruned). Nothing is written into the repository except by `hook install`, which writes one
+new .git/hooks/pre-push and only when no pre-push hook and no core.hooksPath exist.
+"""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import platform
+import re
+import shlex
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import tomllib
+from pathlib import Path
+
+EXIT_OK, EXIT_FAIL, EXIT_USAGE, EXIT_UNSUPPORTED = 0, 1, 2, 3
+KEEP_DAYS = 30
+HOOK_MARKER = "# local-ci pre-push gate"
+BLOCKING = ("fail", "changed")
+
+
+# ---------------------------------------------------------------- git and fingerprints
+
+def git(root: str | os.PathLike, *args: str, check: bool = True, stdin: bytes | None = None) -> bytes:
+    r = subprocess.run(["git", *args], cwd=root, input=stdin, capture_output=True)
+    if check and r.returncode:
+        raise RuntimeError(f"git {' '.join(args)}: {r.stderr.decode(errors='replace').strip()}")
+    return r.stdout
+
+
+def git_s(root, *args: str, check: bool = True) -> str:
+    return git(root, *args, check=check).decode(errors="surrogateescape").strip()
+
+
+def toplevel(cwd: str) -> str | None:
+    r = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd, capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
+
+
+def zsplit(data: bytes) -> list[str]:
+    return [os.fsdecode(x) for x in data.split(b"\0") if x]
+
+
+def blob_id(data: bytes, fmt: str) -> str:
+    h = hashlib.new(fmt)
+    h.update(b"blob %d\0" % len(data))
+    h.update(data)
+    return h.hexdigest()
+
+
+def hash_paths(root: str, paths, index_modes: dict[str, str] | None = None) -> dict[str, tuple[str, str]]:
+    """(mode, object id) of each path as it is on disk now; a missing path is left out. Regular files
+    go through `git hash-object` (no -w: nothing is written) so clean/LFS filters apply exactly as
+    they will when the file is committed. With core.fileMode=false git keeps the index's mode, and so
+    does this."""
+    fmt = git_s(root, "rev-parse", "--show-object-format", check=False) or "sha1"
+    filemode = git_s(root, "config", "--bool", "core.fileMode", check=False) != "false"
+    index_modes = index_modes or {}
+    out, regular = {}, []
+    for p in sorted(set(paths)):
+        full = os.path.join(root, p)
+        if os.path.islink(full):
+            out[p] = ("120000", blob_id(os.fsencode(os.readlink(full)), fmt))
+        elif os.path.isdir(full):  # a submodule: its checked-out commit, and any uncommitted content in it
+            sub = subprocess.run(["git", "rev-parse", "HEAD"], cwd=full, capture_output=True, text=True)
+            st = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=full,
+                                capture_output=True).stdout
+            dirty = f"+dirty-{hashlib.sha256(st).hexdigest()[:16]}" if st.strip() else ""
+            out[p] = ("160000", (sub.stdout.strip() or "unknown") + dirty)
+        elif os.path.isfile(full):
+            regular.append(p)
+    plain = [p for p in regular if "\n" in p]
+    batch = [p for p in regular if "\n" not in p]
+    ids = git(root, "hash-object", "--stdin-paths",
+              stdin=os.fsencode("\n".join(batch) + "\n")).decode().split() if batch else []
+    # strict: a path git did not hash must fail loudly, never drop out of the fingerprint
+    for p, oid in list(zip(batch, ids, strict=True)) + [(p, None) for p in plain]:
+        full = os.path.join(root, p)
+        if oid is None:
+            oid = blob_id(Path(full).read_bytes(), fmt)
+        if filemode:
+            mode = "100755" if os.stat(full).st_mode & stat.S_IXUSR else "100644"
+        else:
+            mode = index_modes.get(p, "100644")
+        out[p] = (mode, oid)
+    return out
+
+
+def digest(entries: dict[str, tuple[str, str]]) -> str:
+    h = hashlib.sha256()
+    for path in sorted(entries):
+        mode, oid = entries[path]
+        h.update(f"{mode} {oid} {path}\0".encode(errors="surrogateescape"))
+    return h.hexdigest()
+
+
+def untracked(root: str) -> list[str]:
+    return zsplit(git(root, "ls-files", "-z", "--others", "--exclude-standard"))
+
+
+def worktree_fingerprint(root: str) -> tuple[str, list[str]]:
+    """Fingerprint of the working tree's content - tracked and untracked, non-ignored files - and any
+    unmerged paths. It equals rev_fingerprint(HEAD) after committing exactly this content."""
+    entries, conflicted = {}, []
+    for rec in zsplit(git(root, "ls-files", "-s", "-z")):
+        meta, path = rec.split("\t", 1)
+        mode, oid, stage = meta.split()
+        if stage != "0":
+            conflicted.append(path)
+        entries[path] = (mode, oid)
+    dirty = [rec[3:] for rec in zsplit(git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all",
+                                           "--no-renames", "--ignore-submodules=none"))]
+    hashed = hash_paths(root, dirty, {p: m for p, (m, _) in entries.items()})
+    for p in dirty:
+        entries.pop(p, None)
+        if p in hashed:
+            entries[p] = hashed[p]
+    return digest(entries), sorted(set(conflicted))
+
+
+def rev_fingerprint(root: str, rev: str) -> str:
+    """Fingerprint of REV's committed tree: exactly what pushing REV publishes. Read from git's object
+    store only, so no filter or other repository-configured command runs."""
+    entries = {}
+    for rec in zsplit(git(root, "ls-tree", "-r", "-z", "--full-tree", rev)):
+        meta, path = rec.split("\t", 1)
+        mode, _type, oid = meta.split()
+        entries[path] = (mode, oid)
+    return digest(entries)
+
+
+# ---------------------------------------------------------------- evidence ledger
+
+def state_dir() -> Path:
+    env = os.environ.get("LOCAL_CI_STATE_DIR")
+    return Path(env) if env else Path.home() / ".cache" / "claude-hooks" / "local-ci"
+
+
+def ledger_path(root: str) -> Path:
+    return state_dir() / (hashlib.sha256(os.path.realpath(root).encode()).hexdigest()[:16] + ".jsonl")
+
+
+def read_records(root: str) -> list[dict]:
+    out = []
+    try:
+        for line in ledger_path(root).read_text().splitlines():
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+    except OSError:
+        pass
+    return out
+
+
+def append_record(root: str, rec: dict) -> None:
+    """Append under an exclusive lock, so concurrent checks cannot lose each other's records, and
+    prune this tool's own files (ledgers, act logs) older than KEEP_DAYS - nothing else in the
+    directory is touched."""
+    d = state_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    p = ledger_path(root)
+    cutoff = time.time() - KEEP_DAYS * 86400
+    with open(d / "ledger.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        keep = [r for r in read_records(root) if r.get("ts", 0) >= cutoff] + [rec]
+        fd, tmp = tempfile.mkstemp(dir=d, prefix=".ledger-", suffix=".tmp")
+        with os.fdopen(fd, "w") as fh:
+            fh.write("".join(json.dumps(r) + "\n" for r in keep))
+        os.replace(tmp, p)
+        for old in [*d.glob("*.jsonl"), *(d / "act-logs").glob("*.log")]:
+            try:
+                if old.stat().st_mtime < cutoff:
+                    old.unlink()
+            except OSError:
+                pass
+
+
+def key(r: dict) -> str:
+    """Evidence identity: the check's name, the command it ran and where. Renaming a check, or
+    running another command under a failed check's name, never clears that failure."""
+    return f"{r['name']}\0{r.get('cmd', '')}\0{r.get('cwd', '')}"
+
+
+def label(r: dict) -> str:
+    return r["name"] + (f" [in {r['cwd']}]" if r.get("cwd") not in (None, "", ".") else "")
+
+
+def summarize(records: list[dict], fp: str) -> dict[str, tuple[dict, bool]]:
+    """Per check, for content fp: (latest record, still blocked). A failure or a tree-modifying run
+    blocks until the same check passes again. An unsupported result (act or Docker unavailable later)
+    neither clears a failure nor erases a pass: it only stands when the check never ran."""
+    out: dict[str, tuple[dict, bool]] = {}
+    for r in sorted((r for r in records if r.get("fp") == fp), key=lambda r: r.get("ts", 0)):
+        prev, blocked = out.get(key(r), (r, False))
+        if r["status"] == "unsupported" and prev is not r and prev["status"] != "unsupported":
+            continue
+        if r["status"] == "pass":
+            blocked = False
+        elif r["status"] in BLOCKING:
+            blocked = True
+        out[key(r)] = (r, blocked)
+    return out
+
+
+def verdict(records: list[dict], fp: str) -> dict:
+    cur = summarize(records, fp).values()
+    passes = [label(r) for r, b in cur if r["status"] == "pass"]
+    blocking = [label(r) for r, b in cur if b]
+    unsupported = [{"name": label(r), "reason": r.get("detail", "")} for r, b in cur
+                   if r["status"] == "unsupported" and not b]
+    if blocking:
+        why = "a check failed or modified the tree and has not passed since: " + ", ".join(blocking)
+    elif not passes:
+        others = sorted({r["fp"][:12] for r in records if r.get("fp") != fp})
+        why = ("no check has passed for this exact content" +
+               (f" (evidence exists only for other content: {', '.join(others[-3:])}; it is stale)" if others else ""))
+    else:
+        why = ""
+    return {"fp": fp, "ok": bool(passes) and not blocking, "passes": passes, "blocking": blocking,
+            "unsupported": unsupported, "why": why}
+
+
+def record(root: str, fp: str, name: str, kind: str, status: str, **extra) -> None:
+    append_record(root, {"ts": time.time(), "fp": fp, "name": name, "kind": kind, "status": status, **extra})
+
+
+# ---------------------------------------------------------------- discovery
+
+def read_text(p: Path) -> str:
+    try:
+        return p.read_text(errors="replace")
+    except OSError:
+        return ""
+
+
+def package_manager(root: Path, pkg: dict) -> str:
+    for lock, pm in (("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lock", "bun"), ("bun.lockb", "bun"),
+                     ("package-lock.json", "npm")):
+        if (root / lock).exists():
+            return pm
+    return str(pkg.get("packageManager", "npm")).split("@", 1)[0] or "npm"
+
+
+def discover_checks(root: Path) -> list[dict]:
+    """Commands the repository itself defines, grouped by stack. Nothing is invented: a command is
+    listed only when the repository's own configuration names the tool or the script."""
+    stacks: list[dict] = []
+
+    pkg_file = root / "package.json"
+    if pkg_file.exists():
+        try:
+            pkg = json.loads(read_text(pkg_file) or "{}")
+        except ValueError:
+            pkg = {}
+        pkg = pkg if isinstance(pkg, dict) else {}
+        pm = package_manager(root, pkg)
+        scripts = pkg.get("scripts") or {}
+        wanted = ["format:check", "lint", "typecheck", "type-check", "check", "test", "test:unit", "build",
+                  "test:e2e", "verify", "ci"]
+        cmds = [f"{pm} run {s}" for s in wanted if s in scripts]
+        notes = [f"`{s}` looks like watch mode; pass the runner's run-once flag" for s in ("test",)
+                 if s in scripts and re.search(r"\bvitest\b(?!\s+run)|--watch\b", str(scripts[s]))]
+        stacks.append({"stack": "javascript/typescript", "evidence": f"package.json ({pm})", "commands": cmds,
+                       "notes": notes or ([] if cmds else ["package.json defines none of the usual check scripts"])})
+
+    py = root / "pyproject.toml"
+    if py.exists():
+        text = read_text(py)
+        try:
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError:
+            data = {}
+        tool = data.get("tool", {}) if isinstance(data, dict) else {}
+        runner = ("uv run " if (root / "uv.lock").exists() or "uv" in tool else
+                  "poetry run " if (root / "poetry.lock").exists() or "poetry" in tool else
+                  "pdm run " if (root / "pdm.lock").exists() else "")
+        def uses(name: str) -> bool:
+            return name in tool or bool(re.search(rf"[\"'\s,\[]{re.escape(name)}\b", text))
+        cmds = []
+        if uses("ruff"):
+            cmds += [f"{runner}ruff format --check .", f"{runner}ruff check ."]
+        if uses("pyright"):
+            cmds.append(f"{runner}pyright")
+        elif uses("mypy") or (root / "mypy.ini").exists():
+            cmds.append(f"{runner}mypy .")
+        if uses("pytest") or (root / "tests").is_dir():
+            cmds.append(f"{runner}pytest -q")
+        stacks.append({"stack": "python", "evidence": "pyproject.toml" + (f" ({runner.split()[0]})" if runner else ""),
+                       "commands": cmds, "notes": []})
+    for f, cmd in (("tox.ini", "tox"), ("noxfile.py", "nox")):
+        if (root / f).exists():
+            stacks.append({"stack": "python", "evidence": f, "commands": [cmd], "notes": []})
+
+    if (root / "go.mod").exists():
+        cmds = ['test -z "$(gofmt -l .)"', "go vet ./...", "go test ./...", "go build ./..."]
+        if any((root / f).exists() for f in (".golangci.yml", ".golangci.yaml", ".golangci.toml", ".golangci.json")):
+            cmds.insert(1, "golangci-lint run")
+        stacks.append({"stack": "go", "evidence": "go.mod", "commands": cmds, "notes": []})
+
+    if (root / "Cargo.toml").exists():
+        stacks.append({"stack": "rust", "evidence": "Cargo.toml",
+                       "commands": ["cargo fmt --check", "cargo clippy --all-targets", "cargo test"], "notes": []})
+
+    for mk in ("Makefile", "makefile", "GNUmakefile"):
+        if (root / mk).exists():
+            targets = re.findall(r"^([A-Za-z][\w.-]*)\s*:(?!=)", read_text(root / mk), re.M)
+            hits = [t for t in dict.fromkeys(targets) if re.fullmatch(r"(check|lint|test|tests|typecheck|verify|ci|build|fmt-check|format-check)", t)]
+            if hits:
+                stacks.append({"stack": "make", "evidence": mk, "commands": [f"make {t}" for t in hits], "notes": []})
+            break
+
+    scripts = [p for p in sorted((root / "scripts").glob("*")) if p.is_file() and os.access(p, os.X_OK)
+               and re.fullmatch(r"(verify|check|lint|test|tests|ci|validate)(\.sh)?", p.name)] if (root / "scripts").is_dir() else []
+    if scripts:
+        stacks.append({"stack": "repository scripts", "evidence": "scripts/",
+                       "commands": [f"./scripts/{p.name}" for p in scripts], "notes": []})
+
+    tracked = zsplit(git(root, "ls-files", "-z", check=False))
+    if any(f.endswith(".tf") for f in tracked):
+        tfbin = "terraform" if shutil.which("terraform") or not shutil.which("tofu") else "tofu"
+        stacks.append({"stack": "terraform", "evidence": "*.tf",
+                       "commands": [f"{tfbin} fmt -check -recursive", f"{tfbin} init -backend=false && {tfbin} validate"],
+                       "notes": ["never apply/destroy: plan only, and only with the user's go-ahead for real backends"]})
+
+    dockerfiles = [f for f in tracked if re.fullmatch(r"Dockerfile(\.\w+)?|.*\.dockerfile", f.rsplit("/", 1)[-1])][:5]
+    if dockerfiles:
+        stacks.append({"stack": "docker", "evidence": ", ".join(dockerfiles),
+                       "commands": [f"docker build -f {shlex.quote(d)} ." for d in dockerfiles],
+                       "notes": ["expensive: build only when the image or its inputs changed"]})
+    compose = [f for f in tracked if "/" not in f and re.fullmatch(r"(docker-)?compose[\w.-]*\.ya?ml", f)]
+    if compose:
+        stacks.append({"stack": "docker compose", "evidence": ", ".join(compose),
+                       "commands": [f"docker compose -f {shlex.quote(c)} config -q" for c in compose], "notes": []})
+
+    if (root / ".pre-commit-config.yaml").exists():
+        stacks.append({"stack": "pre-commit", "evidence": ".pre-commit-config.yaml",
+                       "commands": ["pre-commit run --hook-stage pre-push --all-files"],
+                       "notes": ["the repository's own push-stage hooks; they run again on push"]})
+    if (root / ".github" / "workflows").is_dir():
+        stacks.append({"stack": "workflow lint", "evidence": ".github/workflows",
+                       "commands": ["actionlint"] if shutil.which("actionlint") else [],
+                       "notes": [] if shutil.which("actionlint") else ["actionlint is not installed (optional workflow linter)"]})
+    return stacks
+
+
+def git_hooks(root: str) -> dict:
+    hooks_path = git_s(root, "config", "core.hooksPath", check=False)
+    hook_dir = Path(root, git_s(root, "rev-parse", "--git-path", "hooks"))
+    present = sorted(p.name for p in hook_dir.glob("*") if p.is_file() and not p.name.endswith(".sample")) if hook_dir.is_dir() else []
+    managers = [m for m, f in (("pre-commit", ".pre-commit-config.yaml"), ("husky", ".husky"),
+                               ("lefthook", "lefthook.yml"), ("lefthook", ".lefthook.yml")) if Path(root, f).exists()]
+    pre_push = hook_dir / "pre-push"
+    ours = pre_push.exists() and HOOK_MARKER in read_text(pre_push)
+    return {"core.hooksPath": hooks_path or None, "hook_dir": str(hook_dir), "installed": present,
+            "managers": sorted(set(managers)), "local_ci_pre_push": ours}
+
+
+# ---------------------------------------------------------------- workflows (heuristic, stdlib only)
+
+UNSAFE_EVENTS = {"release", "deployment", "deployment_status", "registry_package", "page_build"}
+UNSAFE_NAME = re.compile(r"(?i)(?:^|[-_ .])(deploy\w*|release\w*|publish\w*|promot\w*|rollout|ship|upload|"
+                         r"provision|apply|destroy|cd)(?:$|[-_ .])")
+UNSAFE_STEP = re.compile(
+    r"(?i)\b(?:docker\s+(?:push|login)|(?:npm|pnpm|yarn|cargo|poetry|uv|gem)\s+publish|twine\s+upload|"
+    r"gh\s+release|git\s+push|(?:terraform|tofu)\s+(?:apply|destroy|import)|kubectl\s+(?:apply|delete|rollout|patch|scale)|"
+    r"helm\s+(?:install|upgrade|uninstall|rollback)|pulumi\s+(?:up|destroy)|cdk\s+deploy|sam\s+deploy|"
+    r"serverless\s+deploy|sls\s+deploy|vercel\b|netlify\s+deploy|fly(?:ctl)?\s+deploy|firebase\s+deploy|"
+    r"aws\s+\w|gcloud\s+\w|az\s+\w|goreleaser|semantic-release|\brsync\b|\bscp\b|"
+    r"(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:deploy|release|publish)\w*|make\s+(?:deploy|release|publish)\w*|"
+    r"[\w./-]*(?:deploy|release|publish)[\w.-]*\.(?:sh|py|js|ts|rb)\b)")
+UNSAFE_ACTION = re.compile(
+    r"(?i)^(?:pypa/gh-action-pypi-publish|softprops/action-gh-release|actions/create-release|"
+    r"actions/(?:deploy-pages|upload-pages-artifact)|docker/login-action|docker/build-push-action|"
+    r"aws-actions/|google-github-actions/(?:auth|deploy)|azure/(?:login|webapps-deploy)|"
+    r"peaceiris/actions-gh-pages|jamesives/github-pages-deploy-action|changesets/action|goreleaser/|"
+    r"hashicorp/setup-terraform.*apply|cloudflare/wrangler-action|superfly/)")
+DOCKER_STEP = re.compile(r"(?i)\bdocker(?:\s+(?:build|run|compose|buildx)|-compose)\b|^docker://|docker/setup-buildx")
+WRITE_PERM = re.compile(r"(?i)\b(contents|packages|deployments|id-token|pages|releases|actions|statuses)\s*:\s*write\b|write-all")
+
+
+def strip_comment(line: str) -> str:
+    q = ""
+    for i, c in enumerate(line):
+        if q:
+            q = "" if c == q else q
+        elif c in "'\"":
+            q = c
+        elif c == "#" and (i == 0 or line[i - 1] in " \t"):
+            return line[:i].rstrip()
+    return line.rstrip()
+
+
+def indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+KEY = re.compile(r"""^\s*(?:"([^"]+)"|'([^']+)'|([^\s:#'"-][^:]*?))\s*:(?:\s+(.*)|\s*)$""")
+
+
+def children(lines: list[str], lo: int, hi: int) -> dict[str, tuple[str, int, int]]:
+    """Mapping keys at the shallowest indent in lines[lo:hi]: key -> (inline value, body lo, body hi)."""
+    idx = [i for i in range(lo, hi) if lines[i].strip()]
+    if not idx:
+        return {}
+    ind = min(indent(lines[i]) for i in idx)
+    keys = []
+    for i in idx:
+        if indent(lines[i]) == ind and (m := KEY.match(lines[i])):
+            keys.append((m.group(1) or m.group(2) or m.group(3), (m.group(4) or "").strip(), i))
+    return {k: (v, i + 1, keys[n + 1][2] if n + 1 < len(keys) else hi) for n, (k, v, i) in enumerate(keys)}
+
+
+def scalar_list(value: str, lines: list[str], lo: int, hi: int) -> list[str]:
+    if value.startswith("["):
+        return [x.strip().strip("'\"") for x in value.strip("[]").split(",") if x.strip()]
+    if value:
+        return [value.strip("'\"")]
+    return [m.group(1).strip().strip("'\"") for i in range(lo, hi) if (m := re.match(r"^\s*-\s+(.+)$", lines[i]))]
+
+
+def step_runs(lines: list[str], lo: int, hi: int) -> list[str]:
+    out, i = [], lo
+    while i < hi:
+        m = re.match(r"^(\s*)(?:-\s+)?run:\s*(.*)$", lines[i])
+        if not m:
+            i += 1
+            continue
+        base, val = indent(lines[i]), m.group(2).strip()
+        i += 1
+        if val[:1] in ("|", ">") or not val:
+            body = []
+            while i < hi and (not lines[i].strip() or indent(lines[i]) > base):
+                if lines[i].strip():
+                    body.append(lines[i].strip())
+                i += 1
+            out.append("\n".join(body))
+        else:
+            out.append(val.strip("'\""))
+    return out
+
+
+def parse_workflow(path: Path) -> dict:
+    raw = read_text(path)
+    lines = [strip_comment(line.replace("\t", "  ")) for line in raw.splitlines()]
+    top = children(lines, 0, len(lines))
+    on = next((top[k] for k in ("on", "true") if k in top), ("", 0, 0))
+    triggers: dict[str, dict] = {}
+    if on[0]:
+        for t in scalar_list(on[0], lines, 0, 0):
+            triggers[t] = {}
+    else:
+        trig = children(lines, on[1], on[2])
+        for t, (_v, lo, hi) in trig.items():
+            sub = children(lines, lo, hi)
+            triggers[t] = {k: scalar_list(sv, lines, slo, shi) for k, (sv, slo, shi) in sub.items()
+                           if k in ("paths", "paths-ignore", "branches", "branches-ignore", "tags")}
+        if not trig:
+            for t in scalar_list("", lines, on[1], on[2]):
+                triggers[t] = {}
+    wf_text = "\n".join(lines[top["permissions"][1]:top["permissions"][2]]) + top["permissions"][0] if "permissions" in top else ""
+    jobs = []
+    if "jobs" in top:
+        for job_id, (_v, lo, hi) in children(lines, top["jobs"][1], top["jobs"][2]).items():
+            jobs.append(classify_job(job_id, lines, lo, hi, wf_text))
+    inherit_needs(jobs)
+    return {"file": path.name, "name": top.get("name", (path.stem,))[0].strip("'\"") or path.stem,
+            "triggers": triggers, "jobs": jobs}
+
+
+def inherit_needs(jobs: list[dict]) -> None:
+    """`act -j JOB` also runs every job JOB needs, so a job is only as runnable as its dependencies."""
+    by_id = {j["id"]: j for j in jobs}
+
+    def blocker(job: dict, seen: frozenset) -> dict | None:
+        for dep in job["needs"]:
+            d = by_id.get(dep)
+            if d is None or dep in seen:
+                continue
+            if d["own_status"] != "runnable":
+                return d
+            hit = blocker(d, seen | {dep})
+            if hit:
+                return hit
+        return None
+
+    for j in jobs:
+        b = blocker(j, frozenset({j["id"]}))
+        if b and j["status"] == "runnable":
+            j["status"] = b["own_status"]
+            j["reasons"] = [f"needs `{b['id']}`, which act would run too and which is {b['own_status']}: "
+                            + "; ".join(b["reasons"])]
+
+
+def classify_job(job_id: str, lines: list[str], lo: int, hi: int, wf_perm: str) -> dict:
+    keys = children(lines, lo, hi)
+    body = "\n".join(lines[lo:hi])
+    name = keys.get("name", (job_id,))[0].strip("'\"") or job_id
+    runs_on = " ".join(scalar_list(*keys["runs-on"][:1], lines, *keys["runs-on"][1:])) if "runs-on" in keys else ""
+    uses = re.findall(r"^\s*(?:-\s+)?uses:\s*['\"]?([^\s'\"]+)", body, re.M)
+    runs = step_runs(lines, lo, hi)
+    secrets = sorted(set(re.findall(r"\$\{\{[^}]*\bsecrets\.([A-Za-z_]\w*)", body)) - {"GITHUB_TOKEN"})
+    if re.search(r"\bsecrets\s*\[|toJSON\(\s*secrets\s*\)", body):
+        secrets.append("(dynamic)")
+    needs = scalar_list(*keys["needs"][:1], lines, *keys["needs"][1:]) if "needs" in keys else []
+    mounts = False
+    for block in ("container", "services"):
+        if block in keys:
+            sub_text = "\n".join(lines[keys[block][1]:keys[block][2]])
+            mounts = mounts or bool(re.search(r"(?m)^\s*(volumes|options)\s*:", sub_text))
+    job_perm = "\n".join(lines[keys["permissions"][1]:keys["permissions"][2]]) + keys["permissions"][0] if "permissions" in keys else ""
+
+    unsafe = []
+    if "environment" in keys:
+        unsafe.append("uses a deployment environment")
+    if UNSAFE_NAME.search(job_id) or UNSAFE_NAME.search(name):
+        unsafe.append(f"name `{name}` looks like a deploy/release/publish job")
+    for u in uses:
+        if UNSAFE_ACTION.search(u):
+            unsafe.append(f"uses {u}")
+    for r in runs:
+        if m := UNSAFE_STEP.search(r):
+            unsafe.append(f"runs `{m.group(0).strip()}`")
+    if WRITE_PERM.search(job_perm or wf_perm):
+        unsafe.append("requests write permissions")
+
+    unsupported, limited = [], []
+    if re.search(r"(?i)\b(macos|windows)", runs_on):
+        unsupported.append(f"runs-on {runs_on}: act runs Linux containers only")
+    elif re.search(r"(?i)self-hosted", runs_on):
+        unsupported.append("self-hosted runner labels have no local image mapping")
+    elif "${{" in runs_on and re.search(r"(?i)\b(macos|windows)-", body):
+        limited.append("matrix includes macOS/Windows legs; act runs only the Linux ones")
+    if "uses" in keys:
+        unsupported.append(f"calls reusable workflow {keys['uses'][0]}; its jobs are not classified here")
+    if secrets or re.search(r"secrets:\s*inherit", body):
+        unsupported.append("needs secrets that are never provided locally: " + (", ".join(secrets) or "inherit"))
+    if re.search(r"\$\{\{\s*(?:secrets\.GITHUB_TOKEN|github\.token)\s*\}\}", body):
+        limited.append("uses GITHUB_TOKEN, which local runs do not get; GitHub API steps will fail")
+    if any(DOCKER_STEP.search(x) for x in runs + uses):
+        limited.append("uses Docker inside the job; needs --docker-socket (trusted workflows only)")
+    if "services" in keys:
+        limited.append("starts service containers on your Docker engine")
+    if mounts:
+        limited.append("sets container volumes/options; act restricts them, or the job is skipped on an act too old to")
+    status = "unsafe" if unsafe else "unsupported" if unsupported else "runnable"
+    setup = re.compile(r"(?i)^(?:(?:sudo\s+)?apt(?:-get)?\s|pip\s+install|python -m pip install|npm\s+ci\b|"
+                       r"(?:pnpm|yarn|bun|npm)\s+install|uv\s+sync|poetry\s+install|go\s+mod\s+download|echo\b)")
+    checks = [r for r in runs if r and not setup.match(r)]
+    return {"id": job_id, "name": name, "runs_on": runs_on, "status": status, "own_status": status,
+            "reasons": unsafe or unsupported, "limits": limited, "commands": checks[:6], "needs": needs,
+            "mounts": mounts}
+
+
+def default_branch(root: str) -> str | None:
+    ref = git_s(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", check=False)
+    if ref:
+        return ref
+    for cand in ("origin/main", "origin/master", "main", "master"):
+        if subprocess.run(["git", "rev-parse", "--verify", "--quiet", cand], cwd=root, capture_output=True).returncode == 0:
+            return cand
+    return None
+
+
+def changed_files(root: str) -> tuple[str | None, list[str] | None]:
+    base = default_branch(root)
+    mb = git_s(root, "merge-base", "HEAD", base, check=False) if base else ""
+    if not mb:
+        return base, None
+    files = set(zsplit(git(root, "diff", "--name-only", "-z", mb, check=False))) | set(untracked(root))
+    return base, sorted(files)
+
+
+def glob_match(pattern: str, path: str) -> bool:
+    rx, i = "", 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            rx, i = rx + "(?:.*/)?", i + 3
+        elif pattern.startswith("**", i):
+            rx, i = rx + ".*", i + 2
+        elif pattern[i] == "*":
+            rx, i = rx + "[^/]*", i + 1
+        elif pattern[i] == "?":
+            rx, i = rx + "[^/]", i + 1
+        else:
+            rx, i = rx + re.escape(pattern[i]), i + 1
+    return re.fullmatch(rx, path) is not None
+
+
+def path_relevant(filters: dict, changed: list[str] | None) -> tuple[bool, str]:
+    if changed is None:
+        return True, "changed files unknown (no base branch); treated as relevant"
+    if "paths" in filters:
+        hit = []
+        for f in changed:
+            inc = False
+            for pat in filters["paths"]:
+                if pat.startswith("!"):
+                    inc = inc and not glob_match(pat[1:], f)
+                elif glob_match(pat, f):
+                    inc = True
+            if inc:
+                hit.append(f)
+        return bool(hit), (f"paths filter matches {len(hit)} changed file(s)" if hit else "paths filter matches no changed file")
+    if "paths-ignore" in filters:
+        left = [f for f in changed if not any(glob_match(p, f) for p in filters["paths-ignore"])]
+        return bool(left), (f"{len(left)} changed file(s) outside paths-ignore" if left else "every changed file is in paths-ignore")
+    return True, "no path filter"
+
+
+def pick_event(triggers: dict) -> str | None:
+    for e in ("pull_request", "push", "merge_group", "workflow_dispatch", "pull_request_target", "workflow_call"):
+        if e in triggers:
+            return e
+    return None
+
+
+def discover_workflows(root: Path) -> list[dict]:
+    wdir = root / ".github" / "workflows"
+    files = sorted(p for p in wdir.glob("*") if p.suffix in (".yml", ".yaml")) if wdir.is_dir() else []
+    _base, changed = changed_files(str(root))
+    out = []
+    for f in files:
+        wf = parse_workflow(f)
+        event = pick_event(wf["triggers"])
+        if not event:
+            unsafe_trig = sorted(set(wf["triggers"]) & UNSAFE_EVENTS)
+            wf["skip"] = (f"triggered only by {', '.join(unsafe_trig)}: release/deploy events are never run locally"
+                          if unsafe_trig else f"no push/pull_request trigger ({', '.join(wf['triggers']) or 'none found'})")
+            wf["event"], wf["relevant"], wf["relevance"] = None, False, wf["skip"]
+        else:
+            wf["event"] = event
+            wf["relevant"], wf["relevance"] = path_relevant(wf["triggers"].get(event, {}), changed)
+        out.append(wf)
+    return out
+
+
+# ---------------------------------------------------------------- act
+
+ENV_KEEP = re.compile(r"^(PATH|USER|LOGNAME|SHELL|TMPDIR|TEMP|TMP|LANG|LC_\w+|TERM|TZ|"
+                      r"DOCKER_HOST|DOCKER_CONTEXT|DOCKER_CONFIG|DOCKER_CERT_PATH|DOCKER_TLS_VERIFY|"
+                      r"XDG_CACHE_HOME|https?_proxy|no_proxy|HTTPS?_PROXY|NO_PROXY)$")
+# Environment problems: recorded unsupported, but only when no step failed (see classify_act).
+INFRA = re.compile(
+    r"(?i)(Cannot connect to the Docker daemon|Error response from daemon|pull access denied|manifest unknown|"
+    r"no matching manifest|exec format error|unsupported platform|Skipping unsupported platform|"
+    r"Could not find any stages to run|authentication required|API rate limit|Error: unable to get git repo)")
+# Look environmental but may be the change's fault (a bad `uses:` ref, an invalid workflow): a failure, hinted.
+HINT = re.compile(r"(?i)(Unable to clone|workflow is not valid|unknown event|Bad credentials|is not supported|"
+                  r"does not provide the specified platform|platform does not match)")
+STEP_FAIL = re.compile(r"❌\s+Failure - (.*)")
+JOB_OK = re.compile(r"^\[([^\]]*)\].*Job succeeded", re.M)
+SECRETISH = re.compile(r"(?:^|/)(?:\.env(?:\..+)?|\.secrets?|\.vars|\.netrc|\.npmrc|\.pypirc|credentials[^/]*|"
+                       r"id_(?:rsa|dsa|ecdsa|ed25519)[^/]*|[^/]*\.(?:pem|key|p12|pfx|kdbx))$")
+DEFAULT_IMAGES = (("ubuntu-latest", "catthehacker/ubuntu:act-latest"),
+                  ("ubuntu-24.04", "catthehacker/ubuntu:act-24.04"),
+                  ("ubuntu-22.04", "catthehacker/ubuntu:act-22.04"))
+
+
+def act_supports(act: str, flag: str) -> bool:
+    try:
+        return flag in subprocess.run([act, "--help"], capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def act_preflight() -> tuple[list[str], dict]:
+    problems: list[str] = []
+    info: dict[str, str | None] = {"act": None, "docker": None}
+    act = shutil.which("act")
+    if act:
+        try:
+            r = subprocess.run([act, "--version"], capture_output=True, text=True, timeout=20)
+            info["act"] = (r.stdout.strip().split() or ["act"])[-1]
+        except (OSError, subprocess.TimeoutExpired):
+            problems.append("act did not answer `act --version` within 20s")
+    else:
+        problems.append("act is not installed (macOS: `brew install act`; Linux: https://nektosact.com/installation/)")
+    if not shutil.which("docker"):
+        problems.append("docker CLI is not installed; act needs a Docker-compatible engine")
+    else:
+        try:
+            r = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}} {{.Architecture}}"],
+                               capture_output=True, text=True, timeout=20)
+            if r.returncode == 0 and r.stdout.strip():
+                info["docker"] = r.stdout.strip()
+            else:
+                problems.append("Docker daemon is not running or not reachable (start Docker Desktop, colima, or dockerd)")
+        except subprocess.TimeoutExpired:
+            problems.append("Docker daemon did not answer within 20s")
+    return problems, info
+
+
+def act_environment(tmp: str) -> dict[str, str]:
+    """An allowlisted environment with a throwaway HOME and XDG_CONFIG_HOME. act reads ~/.actrc and its
+    XDG actrc on every run, and asks `gh auth token` when no token is given: neither can reach the
+    user's own config this way. Docker is located first, while the real HOME is still visible."""
+    env = {k: v for k, v in os.environ.items() if ENV_KEEP.match(k)}
+    if "DOCKER_HOST" not in env:
+        try:
+            host = subprocess.run(["docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"],
+                                  capture_output=True, text=True, timeout=20).stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            host = ""
+        if host:
+            env["DOCKER_HOST"] = host
+    env.setdefault("DOCKER_CONFIG", str(Path.home() / ".docker"))
+    env.setdefault("XDG_CACHE_HOME", str(Path.home() / ".cache"))  # keep act's action and image caches
+    for var, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"), ("GH_CONFIG_DIR", "gh")):
+        env[var] = os.path.join(tmp, sub)
+        os.makedirs(env[var], exist_ok=True)
+    return env
+
+
+def user_actrc_files() -> list[Path]:
+    """User-level actrc files with content. act reads them whatever HOME says: on macOS it resolves
+    ~/Library/Application Support/act/actrc on its own (observed with act 0.2.97), so they can only be
+    refused, not hidden."""
+    home = Path(os.path.expanduser("~"))
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    cands = [home / ".actrc", home / ".config" / "act" / "actrc",
+             home / "Library" / "Application Support" / "act" / "actrc"] + ([Path(xdg) / "act" / "actrc"] if xdg else [])
+    return [p for p in dict.fromkeys(cands)
+            if p.is_file() and any(line.strip() and not line.lstrip().startswith("#") for line in read_text(p).splitlines())]
+
+
+def leaking_files(root: str) -> list[str]:
+    """Secret-looking files git ignores only through global or .git/info excludes. act copies the work
+    tree honouring the repository's .gitignore files alone, so these would land in the job container."""
+    repo_only = set(zsplit(git(root, "ls-files", "-z", "--others", "--exclude-per-directory=.gitignore", check=False)))
+    standard = set(zsplit(git(root, "ls-files", "-z", "--others", "--exclude-standard", check=False)))
+    return sorted(f for f in repo_only - standard if SECRETISH.search(f))
+
+
+def event_payload(root: str, event: str) -> dict:
+    branch = git_s(root, "branch", "--show-current", check=False) or "local"
+    sha = git_s(root, "rev-parse", "HEAD", check=False)
+    base = (default_branch(root) or "main").split("/", 1)[-1]
+    repo = {"default_branch": base, "name": Path(root).name, "full_name": f"local/{Path(root).name}"}
+    if event.startswith("pull_request"):
+        return {"action": "synchronize", "number": 1, "repository": repo,
+                "pull_request": {"number": 1, "draft": False, "head": {"ref": branch, "sha": sha}, "base": {"ref": base}}}
+    if event == "push":
+        return {"ref": f"refs/heads/{branch}", "after": sha, "repository": repo,
+                "head_commit": {"id": sha, "message": "local-ci"}}
+    return {"repository": repo, "inputs": {}}
+
+
+def act_command(act: str, wf_rel: str, job: str, event: str, payload: str, empty: str, images: dict[str, str],
+                native_arch: bool, docker_socket: bool, restrict_options: bool) -> list[str]:
+    # An empty GITHUB_TOKEN: given none, act fetches the user's own from `gh auth token`; given a dummy,
+    # it sends the dummy when cloning public actions and GitHub rejects it. Empty clones anonymously.
+    cmd = [act, event, "-W", wf_rel, "-j", job, "-e", payload,
+           "--secret-file", empty, "--env-file", empty, "--var-file", empty,
+           "-s", "GITHUB_TOKEN=", "--pull=false", "--rm"]
+    if not docker_socket:
+        cmd += ["--container-daemon-socket", "-"]
+    if restrict_options:
+        cmd += ["--container-options-policy", "restrict"]
+    for label, image in images.items():
+        cmd += ["-P", f"{label}={image}"]
+    if not native_arch and platform.machine().lower() in ("arm64", "aarch64"):
+        cmd += ["--container-architecture", "linux/amd64"]
+    return cmd
+
+
+def classify_act(rc: int, log: str, job: dict) -> tuple[str, str]:
+    """pass, fail, or unsupported. A pass needs the success line of this job, not a dependency's. An
+    environment problem counts as unsupported only when no step failed: a real step failure is never
+    hidden behind an environmental-looking line."""
+    def line_of(rx: re.Pattern) -> str:
+        m = rx.search(log)
+        return log[log.rfind("\n", 0, m.start()) + 1:].split("\n", 1)[0].strip()[:200] if m else ""
+
+    steps = [m.group(1).strip() for m in STEP_FAIL.finditer(log)]
+    infra, hinted = line_of(INFRA), line_of(HINT)
+    ours = any(m.group(1).rsplit("/", 1)[-1] in (job["id"], job["name"]) for m in JOB_OK.finditer(log))
+    if rc == 0:
+        if ours:
+            return "pass", "job succeeded under act"
+        return "unsupported", "act exited 0 but this job did not run (skipped by `if:`?)" + (f" ({infra})" if infra else "")
+    if infra and not steps:
+        why = " - a private or misspelled action" if "authentication required" in infra else ""
+        return "unsupported", f"environment, not the code{why}: {infra}"
+    seen = infra or hinted
+    hint = f"; possibly environmental ({seen}) - rerun the step's command directly to tell" if seen else ""
+    if "platform" in seen:
+        hint += "; on an ARM host, `--native-arch` avoids the amd64 image build"
+    return "fail", ("failed steps: " + "; ".join(dict.fromkeys(steps)) if steps else f"act exited {rc}") + hint
+
+
+def needs_closure(wf: dict, job: dict) -> list[dict]:
+    """The job and every job it transitively needs: what `act -j` runs."""
+    by_id, out, todo = {j["id"]: j for j in wf["jobs"]}, {}, [job]
+    while todo:
+        j = todo.pop()
+        if j["id"] not in out:
+            out[j["id"]] = j
+            todo += [by_id[d] for d in j["needs"] if d in by_id]
+    return list(out.values())
+
+
+def cmd_act(args, root: str) -> int:
+    wfs = discover_workflows(Path(root))
+    if not wfs:
+        print("local-ci act: no .github/workflows/*.yml|yaml here; act is not needed - validate with `local-ci plan` commands.")
+        return EXIT_UNSUPPORTED
+    if args.workflow:
+        wfs = [w for w in wfs if w["file"] == Path(args.workflow).name]
+        if not wfs:
+            print(f"local-ci act: no workflow named {args.workflow}", file=sys.stderr)
+            return EXIT_USAGE
+    images = dict(DEFAULT_IMAGES)
+    for spec in args.platform or []:
+        label, _, image = spec.partition("=")
+        if not label or not image or image.startswith("-"):
+            print(f"local-ci act: --platform wants LABEL=IMAGE (an image, never -self-hosted): {spec}", file=sys.stderr)
+            return EXIT_USAGE
+        images[label] = image
+    selected, skipped = [], []
+    for wf in wfs:
+        explicit = bool(args.workflow or args.job)
+        if wf["event"] is None or (args.event is None and not wf["relevant"] and not explicit):
+            skipped.append((wf["file"], "*", wf["relevance"]))
+            continue
+        for job in wf["jobs"]:
+            if args.job and job["id"] not in args.job:
+                continue
+            if job["status"] != "runnable":
+                skipped.append((wf["file"], job["id"], f"{job['status']}: {'; '.join(job['reasons'])}"))
+                continue
+            selected.append((wf, job))
+    for f, j, why in skipped:
+        print(f"  skip  {f}:{j} - {why}")
+    if args.list:
+        for wf, job in selected:
+            lim = f"  [{'; '.join(job['limits'])}]" if job["limits"] else ""
+            print(f"  run   {wf['file']}:{job['id']} ({args.event or wf['event']}, {job['runs_on'] or '?'}){lim}")
+        return EXIT_OK
+    if not selected:
+        print("local-ci act: nothing runnable selected; remote CI remains the only check for the skipped jobs.")
+        return EXIT_UNSUPPORTED
+    fp, conflicted = worktree_fingerprint(root)
+    problems, info = act_preflight()
+    if problems:
+        for wf, job in selected:
+            record(root, fp, f"act:{wf['file']}:{job['id']}", "act", "unsupported", detail="; ".join(problems),
+                   cmd=f"event={args.event or wf['event']}")
+        print("local-ci act: UNAVAILABLE (recorded as unsupported, not as a failure):")
+        for p in problems:
+            print(f"  - {p}")
+        print("  Run the jobs' commands directly instead (`local-ci plan` lists them).")
+        return EXIT_UNSUPPORTED
+    if conflicted:
+        print("local-ci act: unmerged paths; resolve conflicts first", file=sys.stderr)
+        return EXIT_FAIL
+    if (Path(root) / ".actrc").is_file():
+        print("local-ci act: refusing - this repository has an .actrc, which act applies to every run and which "
+              "can switch the isolation off (secrets, --bind, -self-hosted, host paths). Choose images with "
+              "`local-ci act --platform LABEL=IMAGE`, or run act yourself if you trust this repository.")
+        return EXIT_UNSUPPORTED
+    users = user_actrc_files()
+    if users:
+        print("local-ci act: refusing - act applies " + ", ".join(map(str, users)) + " to every run, and it can "
+              "inject secrets or switch the isolation off. Move it aside while local-ci runs act (choose images "
+              "with --platform), or run act yourself.")
+        return EXIT_UNSUPPORTED
+    leaks = leaking_files(root)
+    if leaks:
+        print("local-ci act: refusing - these look like secrets and are ignored only by your global or "
+              ".git/info excludes, so act would copy them into the job container: " + ", ".join(leaks[:5])
+              + ". Add them to the repository's .gitignore or move them out of the work tree.")
+        return EXIT_UNSUPPORTED
+    act = shutil.which("act") or "act"
+    restrict = act_supports(act, "--container-options-policy")
+    if not restrict:
+        for wf, job in list(selected):
+            mount = next((j for j in needs_closure(wf, job) if j["mounts"]), None)
+            if mount:
+                selected.remove((wf, job))
+                print(f"  skip  {wf['file']}:{job['id']} - `{mount['id']}` sets container volumes/options and "
+                      "this act cannot restrict them")
+    print(f"local-ci act: act {info['act']}, docker {info['docker']}")
+    logdir = state_dir() / "act-logs"
+    logdir.mkdir(parents=True, exist_ok=True)
+    statuses = []
+    done = summarize(read_records(root), fp)
+    with tempfile.TemporaryDirectory(prefix="local-ci-") as tmp:
+        env = act_environment(tmp)
+        empty = os.path.join(tmp, "empty")
+        Path(empty).write_text("")
+        for wf, job in selected:
+            name = f"act:{wf['file']}:{job['id']}"
+            event = args.event or wf["event"]
+            prev, blocked = done.get(key({"name": name, "cmd": f"event={event}"}), ({}, False))
+            if prev.get("status") == "pass" and not blocked and not args.force:
+                print(f"  PASS (cached) {name} - already passed for this exact content ({event}); --force to rerun")
+                statuses.append("pass")
+                continue
+            payload = os.path.join(tmp, f"{event}.json")
+            Path(payload).write_text(json.dumps(event_payload(root, event)))
+            cmd = act_command(act, f".github/workflows/{wf['file']}", job["id"], event, payload,
+                              empty, images, args.native_arch, args.docker_socket, restrict)
+            log = logdir / f"{time.strftime('%Y%m%d-%H%M%S')}-{wf['file']}-{job['id']}.log"
+            t0 = time.time()
+            with open(log, "w") as fh:
+                try:
+                    rc = subprocess.run(cmd, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=fh,
+                                        stderr=subprocess.STDOUT, timeout=args.timeout).returncode
+                except subprocess.TimeoutExpired:
+                    rc = 124
+                    fh.write(f"\nlocal-ci: timed out after {args.timeout}s\n")
+            status, detail = classify_act(rc, read_text(log), job)
+            if rc == 124:
+                status, detail = "fail", f"timed out after {args.timeout}s"
+            record(root, fp, name, "act", status, detail=detail, exit=rc, log=str(log),
+                   duration=round(time.time() - t0, 1), cmd=f"event={event}")
+            print(f"  {status.upper():11} {name} ({event}, {time.time() - t0:.0f}s) - {detail}")
+            print(f"              log: {log}")
+            statuses.append(status)
+    for f, j, why in skipped:
+        if why.startswith(("unsafe", "unsupported")):
+            print(f"  not run locally: {f}:{j} - remote CI is its only check")
+    print("Partial evidence: a passing act job shows those steps pass under act; it does not show the remote "
+          "workflow (other jobs, secrets, runner images, required checks) will pass.")
+    if "fail" in statuses:
+        return EXIT_FAIL
+    return EXIT_OK if all(s == "pass" for s in statuses) else EXIT_UNSUPPORTED
+
+
+# ---------------------------------------------------------------- commands
+
+def need_repo() -> str:
+    root = toplevel(os.getcwd())
+    if not root:
+        print("local-ci: not inside a git work tree", file=sys.stderr)
+        sys.exit(EXIT_USAGE)
+    return root
+
+
+def cmd_run(args, root: str) -> int:
+    cmd = args.cmd[1:] if args.cmd[:1] == ["--"] else args.cmd
+    if not cmd:
+        print("local-ci run: give the check after --", file=sys.stderr)
+        return EXIT_USAGE
+    fp, conflicted = worktree_fingerprint(root)
+    if conflicted:
+        print(f"local-ci run: unmerged paths ({', '.join(conflicted[:5])}); resolve them first", file=sys.stderr)
+        return EXIT_FAIL
+    name = args.name or shlex.join(cmd)
+    here = os.path.relpath(os.getcwd(), root)
+    prev, blocked = summarize(read_records(root), fp).get(key({"name": name, "cmd": shlex.join(cmd), "cwd": here}),
+                                                          ({}, False))
+    if prev.get("status") == "pass" and not blocked and not args.force:
+        print(f"local-ci: PASS (cached) {name} - already passed for this exact content (tree {fp[:12]}); "
+              "--force to rerun")
+        return EXIT_OK
+    # One string with spaces is a shell command line (as with run-captured); otherwise argv as given.
+    argv = ["bash", "-c", cmd[0]] if len(cmd) == 1 and " " in cmd[0] else cmd
+    runner = Path(__file__).resolve().with_name("run-captured")
+    if runner.is_file() and os.access(runner, os.X_OK) and not args.raw:
+        argv = [str(runner), "--label", "local-ci", "--", *argv]
+    t0 = time.time()
+    try:
+        rc = subprocess.run(argv).returncode
+    except FileNotFoundError as e:
+        print(f"local-ci: {e}", file=sys.stderr)
+        rc = 127
+    after, _ = worktree_fingerprint(root)
+    status = "pass" if rc == 0 else "fail"
+    detail = f"exit {rc}"
+    if after != fp:
+        status, detail = "changed", f"exit {rc}; the check modified the tree - inspect the change, stage it, rerun"
+    record(root, fp, name, "cmd", status, detail=detail, exit=rc, duration=round(time.time() - t0, 1),
+           cmd=shlex.join(cmd), cwd=here)
+    print(f"local-ci: {status.upper()} {name} (tree {fp[:12]}, {time.time() - t0:.0f}s){'' if status == 'pass' else ' - ' + detail}")
+    return rc if rc else (EXIT_FAIL if status != "pass" else EXIT_OK)
+
+
+def cmd_unsupported(args, root: str) -> int:
+    fp, _ = worktree_fingerprint(root)
+    if any(r["name"] == args.name and blocked for r, blocked in summarize(read_records(root), fp).values()):
+        print(f"local-ci: refusing - `{args.name}` ran and failed for this content; a failing check is not "
+              "unsupported. Fix it, or tell the user why it cannot pass here.", file=sys.stderr)
+        return EXIT_FAIL
+    record(root, fp, args.name, "manual", "unsupported", detail=args.reason)
+    print(f"local-ci: UNSUPPORTED {args.name} recorded for tree {fp[:12]} - report it as unverified: {args.reason}")
+    return EXIT_OK
+
+
+def describe(v: dict, label: str) -> list[str]:
+    out = [f"{label}: tree {v['fp'][:12]} - {'PUBLISHABLE' if v['ok'] else 'NOT VALIDATED'}"
+           + ("" if v["ok"] else f" ({v['why']})")]
+    if v["passes"]:
+        out.append("  passed: " + ", ".join(v["passes"]))
+    for u in v["unsupported"]:
+        out.append(f"  unverified locally: {u['name']} - {u['reason']}")
+    return out
+
+
+def expand_revs(root: str, revs: list[str]) -> list[str]:
+    """A rev ending in "/" names every ref under it (refs/heads/, refs/tags/), as `push --all|--tags` sends."""
+    out = []
+    for rev in revs:
+        if rev.endswith("/"):
+            out += git_s(root, "for-each-ref", "--format=%(refname)", rev, check=False).split() or []
+        else:
+            out.append(rev)
+    return list(dict.fromkeys(out))
+
+
+def gate_revs(root: str, revs: list[str]) -> list[dict]:
+    records = read_records(root)
+    extra = untracked(root)
+    out = []
+    for rev in expand_revs(root, revs):
+        try:
+            fp = rev_fingerprint(root, rev)
+        except RuntimeError as e:
+            out.append({"rev": rev, "fp": "", "ok": False, "passes": [], "blocking": [], "unsupported": [],
+                        "why": f"cannot read {rev}: {e}"})
+            continue
+        v = verdict(records, fp)
+        if not v["ok"] and extra:
+            v["why"] += (f"; {len(extra)} untracked file(s) such as {extra[0]} are not in {rev} - evidence recorded "
+                         "while they were present covers different content: commit or remove them, then revalidate")
+        out.append({"rev": rev, **v})
+    return out
+
+
+def cmd_status(args, root: str) -> int:
+    wfp, conflicted = worktree_fingerprint(root)
+    records = read_records(root)
+    wt = verdict(records, wfp)
+    head = gate_revs(root, ["HEAD"])[0]
+    if args.json:
+        print(json.dumps({"root": root, "worktree": wt, "head": head, "conflicted": conflicted}, indent=2))
+    else:
+        for line in describe(wt, "working tree") + describe(head, "HEAD (what a push publishes)"):
+            print(line)
+        if wt["ok"] and not head["ok"]:
+            print("  Commit the validated changes (all of them) to make HEAD match.")
+    return EXIT_OK if head["ok"] else EXIT_FAIL
+
+
+def cmd_gate(args, root: str) -> int:
+    res = gate_revs(root, args.rev or ["HEAD"])
+    if args.json:
+        print(json.dumps({"root": root, "ok": all(r["ok"] for r in res), "revs": res}))
+    else:
+        for r in res:
+            for line in describe(r, r["rev"]):
+                print(line)
+    return EXIT_OK if all(r["ok"] for r in res) else EXIT_FAIL
+
+
+def cmd_pre_push(_args, root: str) -> int:
+    if not (os.environ.get("CLAUDECODE") or os.environ.get("LOCAL_CI_ENFORCE")):
+        return EXIT_OK  # human pushes are the human's call; agent sessions are enforced
+    refs = [line.split() for line in sys.stdin.read().splitlines() if len(line.split()) >= 2]
+    revs = [parts[1] for parts in refs if set(parts[1]) != {"0"}]  # all zeros: a deletion
+    if refs and not revs:
+        return EXIT_OK
+    if not revs:  # a hook manager that consumed stdin (pre-commit sets PRE_COMMIT_TO_REF)
+        revs = [os.environ.get("PRE_COMMIT_TO_REF") or "HEAD"]
+    res = gate_revs(root, sorted(set(revs)))
+    if all(r["ok"] for r in res):
+        return EXIT_OK
+    print("local-ci pre-push: blocked - the commits being pushed have no passing local validation:", file=sys.stderr)
+    for r in res:
+        for line in describe(r, r["rev"][:12]):
+            print("  " + line, file=sys.stderr)
+    print("  Validate locally first (`local-ci plan`, then `local-ci run -- <check>`), then push again.", file=sys.stderr)
+    return EXIT_FAIL
+
+
+def self_path() -> str:
+    return str(Path(__file__).resolve())
+
+
+def hook_script() -> str:
+    """The pre-push hook, pointing at this copy of local-ci (wherever the installer put it)."""
+    return f"""#!/bin/sh
+{HOOK_MARKER} (installed by `local-ci hook install`; delete this file to remove it).
+# Enforced only in agent sessions (CLAUDECODE set) or with LOCAL_CI_ENFORCE=1; fails open when
+# local-ci is not installed.
+default={shlex.quote(self_path())}
+lc="${{LOCAL_CI_BIN:-$default}}"
+[ -x "$lc" ] || exit 0
+exec "$lc" pre-push "$@"
+"""
+
+def snippets() -> str:
+    lc = shlex.quote(self_path())
+    return f"""Add the gate to the hook manager this repository already uses (do not replace its hooks):
+  plain hook file (any pre-push script):   {lc} pre-push "$@" || exit 1
+     (place it before anything else reads stdin, or pass the refs through: it reads git's pre-push stdin)
+  pre-commit (.pre-commit-config.yaml):
+    - repo: local
+      hooks:
+        - id: local-ci
+          name: local-ci evidence gate
+          entry: {lc} pre-push
+          language: system
+          pass_filenames: false
+          always_run: true
+          stages: [pre-push]
+  lefthook (lefthook.yml):    pre-push: {{commands: {{local-ci: {{run: '{lc} pre-push', use_stdin: true}}}}}}
+  husky (.husky/pre-push):    {lc} pre-push "$@" || exit 1
+"""
+
+
+def cmd_hook(args, root: str) -> int:
+    if args.action == "print":
+        print(snippets())
+        return EXIT_OK
+    hooks_path = git_s(root, "config", "core.hooksPath", check=False)
+    if hooks_path:
+        print(f"local-ci hook: core.hooksPath is set ({hooks_path}); its hooks are not replaced.\n{snippets()}")
+        return EXIT_UNSUPPORTED
+    target = Path(root, git_s(root, "rev-parse", "--git-path", "hooks/pre-push"))
+    if target.exists():
+        if HOOK_MARKER in read_text(target):
+            print(f"local-ci hook: already installed at {target}")
+            return EXIT_OK
+        print(f"local-ci hook: {target} already exists and is not ours; it is left untouched.\n{snippets()}")
+        return EXIT_UNSUPPORTED
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(hook_script())
+    target.chmod(0o755)
+    print(f"local-ci hook: installed {target}")
+    return EXIT_OK
+
+
+def cmd_plan(args, root: str) -> int:
+    rp = Path(root)
+    wfp, _ = worktree_fingerprint(root)
+    wt = verdict(read_records(root), wfp)
+    hooks = git_hooks(root)
+    stacks = discover_checks(rp)
+    wfs = discover_workflows(rp)
+    base, changed = changed_files(root)
+    problems, info = act_preflight() if wfs else ([], {})
+    if args.json:
+        print(json.dumps({"root": root, "worktree": wt, "git_hooks": hooks, "checks": stacks, "workflows": wfs,
+                          "base": base, "changed": changed, "act": {"problems": problems, **info}}, indent=2))
+        return EXIT_OK
+    print(f"local-ci plan - {root}")
+    print(f"tree {wfp[:12]}: " + ("validated: " + ", ".join(wt["passes"]) if wt["ok"] else "not validated yet"))
+    print(f"changed vs {base or '(no base branch)'}: " + (f"{len(changed)} file(s)" if changed is not None else "unknown"))
+    hp = hooks["core.hooksPath"]
+    print("git hooks: " + (", ".join(hooks["installed"]) or "none installed")
+          + (f"; managers: {', '.join(hooks['managers'])}" if hooks["managers"] else "")
+          + (f"; core.hooksPath={hp}" if hp else "")
+          + ("; local-ci pre-push: on" if hooks["local_ci_pre_push"] else ""))
+    print("\nChecks this repository defines (fast and relevant first; record each with `local-ci run -- <cmd>`):")
+    if not stacks:
+        print("  none detected - read the README/CONTRIBUTING for the test command; `git diff --check` at minimum")
+    for s in stacks:
+        print(f"  {s['stack']} ({s['evidence']}):")
+        for c in s["commands"]:
+            print(f"    {c}")
+        for n in s["notes"]:
+            print(f"    note: {n}")
+    if not wfs:
+        print("\nNo GitHub Actions workflows: act is not needed here.")
+        return EXIT_OK
+    print(f"\nGitHub Actions ({len(wfs)} workflow file(s)); `local-ci act` runs the relevant runnable jobs:")
+    for wf in wfs:
+        trig = ", ".join(wf["triggers"]) or "?"
+        print(f"  {wf['file']} [{trig}] - {'relevant' if wf['relevant'] else 'not relevant'}: {wf['relevance']}")
+        for job in wf["jobs"]:
+            extra = f" - {'; '.join(job['reasons'])}" if job["reasons"] else ""
+            print(f"    {job['id']} ({job['runs_on'] or '?'}): {job['status']}{extra}")
+            for lim in job["limits"]:
+                print(f"      limit: {lim}")
+            for c in job["commands"]:
+                first = c.splitlines()[0] + (" ..." if "\n" in c else "")
+                print(f"      runs: {first}")
+    print("\nact: " + ("; ".join(problems) if problems else f"act {info.get('act')}, docker {info.get('docker')}"))
+    print("Prefer the jobs' commands run directly when they are faster; use act for what only the workflow defines.")
+    return EXIT_OK
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="local-ci", description=(__doc__ or "").split("\n\n")[0],
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="command", required=True)
+    s = sub.add_parser("plan")
+    s.add_argument("--json", action="store_true")
+    s = sub.add_parser("run")
+    s.add_argument("--name")
+    s.add_argument("--force", action="store_true", help="rerun even when this content already passed")
+    s.add_argument("--raw", action="store_true", help="do not route output through run-captured")
+    s.add_argument("cmd", nargs=argparse.REMAINDER)
+    s = sub.add_parser("unsupported")
+    s.add_argument("--name", required=True)
+    s.add_argument("--reason", required=True)
+    s = sub.add_parser("act")
+    s.add_argument("--workflow")
+    s.add_argument("--job", action="append")
+    s.add_argument("--event")
+    s.add_argument("--list", action="store_true")
+    s.add_argument("--force", action="store_true", help="rerun jobs that already passed for this content")
+    s.add_argument("--native-arch", action="store_true", help="do not force linux/amd64 on ARM hosts")
+    s.add_argument("--platform", action="append", metavar="LABEL=IMAGE",
+                   help="runner image for a runs-on label (repeatable); actrc files are never read")
+    s.add_argument("--docker-socket", action="store_true",
+                   help="mount the Docker socket into job containers (trusted workflows only)")
+    s.add_argument("--timeout", type=int, default=1800)
+    s = sub.add_parser("status")
+    s.add_argument("--json", action="store_true")
+    s = sub.add_parser("gate")
+    s.add_argument("--rev", action="append")
+    s.add_argument("--json", action="store_true")
+    s = sub.add_parser("pre-push")
+    s.add_argument("remote", nargs="*", help="git passes the remote name and URL")
+    s = sub.add_parser("hook")
+    s.add_argument("action", choices=["install", "print"])
+    args = p.parse_args(argv)
+    root = need_repo()
+    return {"plan": cmd_plan, "run": cmd_run, "unsupported": cmd_unsupported, "act": cmd_act,
+            "status": cmd_status, "gate": cmd_gate, "pre-push": cmd_pre_push, "hook": cmd_hook}[args.command](args, root)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1189,6 +1189,49 @@ exists; the numbers are as recorded during the probe.
 
 ---
 
+## 12. Local-first CI
+
+**Class: Observed** for the problem and for the tool's behavior; **Hypothesis**
+for any saving in Actions minutes.
+
+- **The problem.** Agents in this setup's own use committed, pushed, read the
+  remote failure and pushed again. That was reported by the owner and is not
+  quantified here: no run counts or minute totals were collected, so this page
+  claims no number.
+- **The gate and the act runner** were exercised by
+  `scripts/test_local_ci.py`: throwaway repositories with stubbed `act`,
+  `docker` and `gh`, pushes only to a local bare repository. It covers a pass
+  allowing a push, a failure blocking it, edits and partial commits making
+  evidence stale, act or Docker missing or down, unsafe and unsupported jobs,
+  environmental versus genuine act failures, secrets kept out of act's
+  environment, existing hooks and `core.hooksPath` left alone, the installer,
+  and the command table the hook decides. `scripts/verify.sh` runs it.
+- **One real act run** (act 0.2.97, Docker 29 on an arm64 Mac, `linux/amd64`
+  containers, a two-job workflow on `debian:bookworm-slim`): the passing job was
+  recorded as a pass, the failing one as a failure naming its step, and the gate
+  then refused the push. With `-P` given and stdin closed, act did not show its
+  first-run image prompt and wrote no configuration into `HOME`.
+- **Found in review and reproduced** (act 0.2.97): without a `GITHUB_TOKEN`
+  secret, act gave a probe workflow a non-empty token with `GITHUB_TOKEN` and
+  `GH_TOKEN` unset in its environment, which is the `gh auth token` fallback; and
+  `act -j test` planned the `publish` job `test` needs. Both are fixed and
+  pinned by tests. A suspected problem was refuted: `--pull=false` still pulled
+  an image that was missing locally.
+- **Found in the re-review and reproduced:** the first token fix (a dummy
+  value) made GitHub reject the clone of a public action ("authentication
+  required"); an empty `GITHUB_TOKEN` secret cloned it and still kept the
+  token from the workflow (length 0, against 40 without the secret). act
+  recreated `~/Library/Application Support/act` with `HOME` and
+  `XDG_CONFIG_HOME` pointed elsewhere, so user actrc files are refused rather
+  than hidden. A public Docker action failed under `linux/amd64` on the arm64
+  host with a platform mismatch in act's image build, and passed with
+  `--native-arch`.
+- **Not measured:** minutes saved, pushes avoided, or the overhead of
+  fingerprinting on a large repository. Measuring the first two needs the
+  GitHub Actions usage report for a comparable period before and after.
+
+---
+
 ## How to reproduce or extend
 
 - **Capture ledger:** it is a TSV — `timestamp, label, exit, bytes_captured,
@@ -1197,6 +1240,7 @@ exists; the numbers are as recorded during the probe.
 - **The `/context` measurement that is missing:** run a representative long task
   with the layer disabled, record `/context`; repeat with it enabled. Same task,
   same repository, same starting state.
+- **Local-first CI (§12):** `python3 scripts/test_local_ci.py -v`
 - **The install guard (§10):** `python3 scripts/test_skill_install_guard.py -v`
   reruns the decision table and prints the reason shown for each `ask`; add a
   row for any form you want pinned. For sessions, keep the throwaway project

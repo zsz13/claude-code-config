@@ -24,10 +24,10 @@ which claims are measured and which are not.
 | Directory | What it is | Loads |
 |---|---|---|
 | [`rules/`](rules/) | 7 path-scoped rules (Python, TypeScript, frontend, tests, tooling, infra, migrations) | Only when a matching file path is touched |
-| [`skills/`](skills/) | 10 procedures the model invokes by name | On invocation |
+| [`skills/`](skills/) | 11 procedures the model invokes by name | On invocation |
 | [`agents/`](agents/) | 7 reviewer subagent definitions | Inside their own subagent |
-| [`hooks/`](hooks/) | 2 deny-guards, 1 approval guard, 5 advisors | Executed, never loaded |
-| [`bin/`](bin/) | `run-captured` — large command output kept on disk | Run as a command |
+| [`hooks/`](hooks/) | 3 deny-guards, 1 approval guard, 5 advisors | Executed, never loaded |
+| [`bin/`](bin/) | `run-captured` — large command output kept on disk; `local-ci` — local validation evidence and act | Run as a command |
 | [`config/`](config/) | Sanitized `settings.json`, Ponytail and Codex templates | — |
 | [`examples/`](examples/) | `CLAUDE.md` templates (global, directory-scoped, Codex) | — |
 | [`workflows/`](workflows/) | The review pipeline and when each stage fires | — |
@@ -102,6 +102,16 @@ the caveats in [docs/benchmarks.md](docs/benchmarks.md#1-context-efficiency-laye
 `git commit --no-verify` are denied by hooks, because those are the two commands
 where good judgement is not a sufficient safeguard. Both explain themselves and
 say how to remove them.
+
+**Local first, remote CI last.** [`bin/local-ci`](bin/local-ci) finds the checks a
+repository already defines, records each result against the exact content it ran
+on, and runs the affected GitHub Actions jobs locally with
+[act](https://github.com/nektos/act) — with no secrets, no Docker socket, and
+never a deploy or publish job. A hook denies `git push`, PR creation and remote
+workflow runs until the exact content being published has a recorded passing
+check and no unresolved failure, so remote CI stops being the debugger. Which
+checks are the right ones stays a matter of policy, not of the hook. What this enforces, and what it cannot (a repository's own workflow
+triggers), is in [docs/why-this-setup.md](docs/why-this-setup.md#why-local-first-ci-and-what-is-actually-enforced).
 
 ## Install
 

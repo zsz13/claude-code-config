@@ -57,6 +57,11 @@ that each time.
   exist).
 - The two deny-guards (`block-destructive-iac.sh`, `block-git-no-verify.sh`)
   block real commands. Read them before installing them.
+- `local-ci-gate.sh` denies `git push`, PR creation and updates, and remote
+  workflow runs until `~/.claude/bin/local-ci` has recorded a passing check for
+  the content being published. Remove it if you do not want local validation
+  enforced; the `local-ci` skill and the `CLAUDE.md` section still work without
+  it. It needs `skill-install-guard.py` beside it (it borrows its shell scanner).
 - `skill-install-guard.sh` asks before every skill or plugin install, update or
   removal, including your own hand edits under `~/.claude/skills`. Expect a
   prompt for those; that is the point.

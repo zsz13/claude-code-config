@@ -210,7 +210,10 @@ Add or extend the workflow so it runs on a clean checkout: format check, full
 lint, type check, tests, build, and the deterministic dependency audit
 (`pip-audit`, `pnpm audit --prod` or the repo's equivalent). Local hooks are
 feedback, not a boundary. Use the `infrastructure-quality` skill for the workflow
-file itself (permissions, pinned actions).
+file itself (permissions, pinned actions). Keep the workflow cheap to run as
+well as correct: one trigger per event (`push` to the default branch plus
+`pull_request`), a `concurrency` group, dependency caching and
+`timeout-minutes`; the full checklist is §7 of the `local-ci` skill.
 
 ## 6. Hand-off
 

@@ -68,12 +68,12 @@ They use `~`-relative paths throughout and contain none of those.
 
 ## Part 2 — Security properties of the configuration
 
-### The two deny-hooks
+### The deny-hooks
 
-`block-destructive-iac.sh` and `block-git-no-verify.sh`/`.py` are the only hooks
-that block anything. (The one other block is `permissions.deny` in
-`settings.json`, covered under trust boundaries below.) Both hooks are narrow by
-design:
+`block-destructive-iac.sh`, `block-git-no-verify.sh`/`.py` and
+`local-ci-gate.sh`/`.py` are the only hooks that block anything. (The one other
+block is `permissions.deny` in `settings.json`, covered under trust boundaries
+below.) All three are narrow by design:
 
 - **IaC guard** denies `terraform`/`tofu` `apply`, `destroy`, `import`, `taint`,
   `untaint`, `force-unlock`, and `state mv|rm|push|replace-provider` — including
@@ -84,8 +84,16 @@ design:
 - **No-verify guard** denies hook bypasses on `commit`/`push`/`merge`/`rebase`/
   `am`/`cherry-pick`/`revert`, plus `-c core.hooksPath=` and setting
   `core.hooksPath`. `--get`/`--unset`/`--list` on that key are allowed.
+- **Local-CI gate** denies `git push` and the `gh` commands that open or update
+  a PR or start a workflow while the published content has no passing local
+  evidence. It decides from a file under `~/.cache/claude-hooks/local-ci/`; a
+  forged record there would pass it, and so would a trivial check recorded as
+  the only evidence. It stops a careless push, not a deliberate one. The opt-in
+  pre-push hook enforces only while `CLAUDECODE` is set, so a command that
+  unsets it is not stopped either. It reads the pushed commits from git's object
+  store only, so no repository-configured filter runs before approval.
 
-Both say, in the denial message, what they are and how to remove them. A guard
+All three say, in the denial message, what they are and how to remove them. A guard
 you cannot identify or disable is a trap, not a safety feature.
 
 **Known limits, stated honestly:**
@@ -96,7 +104,53 @@ you cannot identify or disable is a trap, not a safety feature.
   determined bypass.
 - The IaC guard does not know about `pulumi`, `cdk deploy`, `kubectl delete`,
   `aws` CLI mutations, or `helm uninstall`. Extend it if you use those.
-- The no-verify guard fails **open** on an unparseable command.
+- The no-verify guard fails **open** on an unparseable command. The local-CI
+  gate fails open when `local-ci` or the scanner it borrows is missing, or the
+  gate times out, and says so in one line.
+
+### Running workflows locally with act
+
+A workflow is code from the repository, and `act` runs it in containers on your
+Docker engine. `local-ci act` treats it as untrusted:
+
+- the act process gets an allowlisted environment: `PATH`, `HOME`, locale,
+  Docker connection and proxy variables. `GITHUB_TOKEN`, `GH_TOKEN`, cloud and
+  registry credentials are not passed;
+- an empty `GITHUB_TOKEN` secret, and a throwaway `HOME`, `XDG_CONFIG_HOME` and
+  `GH_CONFIG_DIR`. Without a token act runs `gh auth token` and hands the
+  workflow your own GitHub token. That was found in review and reproduced: with
+  both token variables unset, a probe step saw a 40-character
+  `secrets.GITHUB_TOKEN`; with the empty secret it sees none. (A dummy token was
+  tried first: GitHub then rejected the clone of every public action.);
+- `--secret-file`, `--env-file` and `--var-file` point at an empty file, because
+  act otherwise reads `.secrets`, `.env` and `.vars` from the repository;
+- no actrc: a repository `.actrc` or a user-level actrc with content makes it
+  refuse. act applies them to every run, and a cloned repository's could run
+  its steps directly on the host (`-P label=-self-hosted`), mount it (`--bind`)
+  or serve files from it. Parsing them to allow "safe" flags was tried and
+  rejected in review: act expands `$VARS` in actrc lines, so what a parser sees
+  is not what act runs. A user-level actrc cannot be hidden with a throwaway
+  `HOME` either: on macOS act 0.2.97 resolved its config directory under the
+  real `~/Library/Application Support` regardless;
+- a secret-looking file ignored only through global or `.git/info` excludes
+  makes it refuse, because act copies the work tree by the repository's
+  `.gitignore` alone;
+- `--container-daemon-socket -`: job containers do not get the Docker socket
+  (which is root on the host). With `--container-options-policy restrict`
+  (act 0.2.97 has it) act also refuses workflow-set host mounts and options;
+  with an older act, jobs that set them, and jobs needing those, are skipped. `--docker-socket` is an
+  explicit opt-in for trusted workflows;
+- deploy, release and publish jobs, jobs with a deployment environment or write
+  permissions, steps that push, publish, sync files out or call a cloud CLI,
+  and any job that needs one of those (act runs a job's `needs:` too) are never
+  run;
+- act's default `.gitignore` handling keeps ignored files (such as `.env`) out
+  of the copied workspace.
+
+The classification reads names, steps and keys. A workflow can hide a deploy
+behind an innocent name and a script; `--list` shows what will run before
+anything does. The isolation above is what limits the damage when it does:
+no credentials, no socket, no host mounts.
 
 ### The skill-install guard
 
@@ -221,6 +275,10 @@ audit was designed with no state at all.
 |---|---|---|---|
 | Deny-hooks | Fail **open** on unparseable input | A destructive command could pass | Narrow patterns, fast-path guard, denial names itself |
 | Deny-hooks | **False positive** on an innocent command | Legitimate work blocked | `shlex` parsing; `-n` in a quoted message is not a flag; removal instructions in the message |
+| Local-CI gate | Misses a push in a script, or fails open | Unvalidated work reaches remote CI | Opt-in `pre-push` hook covers every agent `git push`; `CLAUDE.md` policy |
+| Local-CI gate | Stale or forged evidence | A push passes without a real check | Evidence keyed by content, so stale never matches; forging needs a deliberate write to the cache |
+| `local-ci act` | Misclassifies a deploy job as runnable | A workflow step runs locally with no secrets and no Docker socket | Name, step, environment and permission checks; `--list` first |
+| `local-ci act` | Environment failure looks like a test failure, or the reverse | Wrong signal | Unsupported only when no step failed; the log path is printed |
 | Skill-install guard | Fails open, or misses an indirect write | A skill is installed without a prompt | The `CLAUDE.md` policy; the guard covers the CLI, the file tools and common shell writes |
 | Skill-install guard | Asks on a hand edit of an installed skill | One extra prompt | Intended: that is a persistent change too. Reads and `skills find`/`use` never ask |
 | Advisory hooks | Fail open, silently | A hint is missed | Nothing depends on the hint |
