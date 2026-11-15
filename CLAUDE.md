@@ -40,6 +40,9 @@ every packet field a judge reads exists, that the skill-install guard still
 decides its regression table (`scripts/test_skill_install_guard.py`) as expected,
 and that the local-first CI gate holds its scenarios (`scripts/test_local_ci.py`).
 
+`local-ci auto` runs exactly this, as declared in `.local-ci.json` (the bare
+`./scripts/verify.sh` also compares a live installation, so it is excluded).
+
 **Nothing machine-specific.** No `/Users/...`, no `/home/...`, no usernames, no
 email addresses, no private repository names, no hostnames, no tokens. Use
 `$HOME`, `~/github`, `YOUR_USERNAME`, `YOUR_REPOSITORY`, `YOUR_API_KEY`. The

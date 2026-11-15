@@ -85,10 +85,16 @@ below.) All three are narrow by design:
   `am`/`cherry-pick`/`revert`, plus `-c core.hooksPath=` and setting
   `core.hooksPath`. `--get`/`--unset`/`--list` on that key are allowed.
 - **Local-CI gate** denies `git push` and the `gh` commands that open or update
-  a PR or start a workflow while the published content has no passing local
-  evidence. It decides from a file under `~/.cache/claude-hooks/local-ci/`; a
-  forged record there would pass it, and so would a trivial check recorded as
-  the only evidence. It stops a careless push, not a deliberate one. The opt-in
+  a PR or start a workflow until every required check of the validation plan
+  recorded for the published content has passed. A trivial check recorded as
+  the only evidence no longer passes it: the plan is derived by `local-ci auto`,
+  not chosen, and a required check cannot be relabelled unsupported. A
+  repository's `.local-ci.json` can add checks or exclude a discovered one with
+  a reason, but only as committed on its base branch: the change under
+  validation cannot edit what validates it. It decides
+  from a file under `~/.cache/claude-hooks/local-ci/`; a forged record there
+  would pass it, and so would a plan recorded on a machine made to look as if
+  the tools were missing. It stops a careless push, not a deliberate one. The opt-in
   pre-push hook enforces only while `CLAUDECODE` is set, so a command that
   unsets it is not stopped either. It reads the pushed commits from git's object
   store only, so no repository-configured filter runs before approval.
@@ -148,9 +154,26 @@ Docker engine. `local-ci act` treats it as untrusted:
   of the copied workspace.
 
 The classification reads names, steps and keys. A workflow can hide a deploy
-behind an innocent name and a script; `--list` shows what will run before
-anything does. The isolation above is what limits the damage when it does:
-no credentials, no socket, no host mounts.
+behind an innocent name and a script; `local-ci act --list` and
+`local-ci auto --plan-only` show what will run before anything does, but the
+automatic flow does not stop to ask. The isolation above is what limits the
+damage when it does: no credentials, no socket, no host mounts. Mounting the
+Docker socket gives a job root on the machine, so `--docker-socket` is the
+user's decision, never the agent's; the plan says so where it applies.
+
+### The repository's own commands run on the host
+
+`local-ci auto` runs the check commands the repository defines — `npm run`
+scripts, Makefile targets, `scripts/verify*`, `pre-commit run`, `uv run`
+(which installs dependencies), `terraform init` (which fetches providers) — on
+the host, with the user's environment, and without act's isolation. That is the
+same trust as running the repository's tests by hand, and it is now automatic:
+the Stop hook asks for it after any session that changed the repository. A
+repository you would not run `make test` in is one you should not have the agent
+edit with this hook installed (or set `LOCAL_CI_AUTO=0`); allowlisting
+`local-ci auto` in the permission settings approves every command it discovers.
+act jobs are the isolated part: workflow code runs only in containers, never on
+the host.
 
 ### The skill-install guard
 
@@ -279,6 +302,8 @@ audit was designed with no state at all.
 | Local-CI gate | Stale or forged evidence | A push passes without a real check | Evidence keyed by content, so stale never matches; forging needs a deliberate write to the cache |
 | `local-ci act` | Misclassifies a deploy job as runnable | A workflow step runs locally with no secrets and no Docker socket | Name, step, environment and permission checks; `--list` first |
 | `local-ci act` | Environment failure looks like a test failure, or the reverse | Wrong signal | Unsupported only when no step failed; the log path is printed |
+| `local-ci auto` | Treats a job as covered by a local check when it is not | A workflow-only behaviour is not run locally | Equivalence only for a plain job whose every command is a required local command line; remote CI still runs it |
+| Stop hook (`local-ci-auto`) | Holds a stop the user did not want validated, or content changes on every run | Extra turns | At most once per content state and three times in a row per user turn; never for a turn that changed nothing; `LOCAL_CI_AUTO=0` |
 | Skill-install guard | Fails open, or misses an indirect write | A skill is installed without a prompt | The `CLAUDE.md` policy; the guard covers the CLI, the file tools and common shell writes |
 | Skill-install guard | Asks on a hand edit of an installed skill | One extra prompt | Intended: that is a persistent change too. Reads and `skills find`/`use` never ask |
 | Advisory hooks | Fail open, silently | A hint is missed | Nothing depends on the hint |

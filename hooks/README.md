@@ -12,6 +12,7 @@ Register them in `settings.json` — see
 | `block-destructive-iac.sh` | PreToolUse(Bash) | **yes** | `python3` |
 | `block-git-no-verify.sh` + `.py` | PreToolUse(Bash) | **yes** | `python3` |
 | `local-ci-gate.sh` + `.py` | PreToolUse(Bash) | **yes** | `python3`, `git`, `../bin/local-ci`, `skill-install-guard.py` |
+| `local-ci-auto.sh` | SessionStart, PreToolUse(Edit\|Write\|MultiEdit\|NotebookEdit), Stop | holds a stop once | `python3`, `git`, `../bin/local-ci` |
 | `skill-install-guard.sh` + `.py` | PreToolUse(Bash\|Write\|Edit\|MultiEdit\|NotebookEdit) | **asks** | `python3` |
 | `large-output-advisor.sh` + `.py` | PreToolUse(Bash) | no | `python3` |
 | `read-budget-advisor.sh` + `.py` | Pre+PostToolUse(Read\|Bash) | no | `python3` |
@@ -37,14 +38,15 @@ core.hooksPath <value>`. Commands are parsed with `shlex` per shell segment, so
 **`local-ci-gate.sh` + `.py`** denies a command that publishes work or starts
 remote CI — `git push`, `gh pr create`, `gh pr ready`, `gh pr update-branch`,
 `gh workflow run`, `gh run rerun`, `gh release create`, `gh api …/dispatches` —
-while the content it would publish has no passing local validation recorded by
-[`bin/local-ci`](../bin/local-ci). It asks `local-ci gate` about the refs the
+until every required check of the validation plan recorded by
+[`bin/local-ci`](../bin/local-ci) for the content it would publish has passed. It asks `local-ci gate` about the refs the
 push sends (its source refs, every branch for `--all`, `--mirror` or the
 matching refspec `:`, every tag for `--tags`; default `HEAD`), in the directory
 `-C`, `--git-dir`, `cd` or `pushd` names; when a `cd` sits in a subshell or is
 undone by `popd`, the session's own directory is checked as well. Evidence is keyed by the
 committed tree's content, so a check that passed before the last edit does not
-count, and a failure blocks until that same check passes. `git push --dry-run`,
+count, a failure blocks until that same check passes, and a pass of some other
+check never stands in for a required one. `git push --dry-run`,
 deletion-only pushes, `gh pr ready --undo` and anything outside a git work tree
 pass. It reads shell text with `skill-install-guard.py`'s
 scanner (here-docs and comments are data; `sh -c`, `$(…)`, `cd`, `git -C` and
@@ -56,6 +58,24 @@ script, an alias), `local-ci hook install` adds a git `pre-push` hook to a
 repository that has none, enforced only in agent sessions; it never replaces a
 hook or `core.hooksPath`. Rationale:
 [docs/why-this-setup.md](../docs/why-this-setup.md#why-local-first-ci-and-what-is-actually-enforced).
+
+**`local-ci-auto.sh`** is what makes local validation happen without anyone
+asking for it. On `SessionStart` it records the content of the repository the
+session starts in (`local-ci session start`), and before the first file-tool
+edit of any other repository it records that one too (`touch`: one fingerprint,
+no check). On `Stop` — the agent finishing a turn — it compares: if the session
+changed a repository's content and the content has no complete validation, it
+holds the stop with the instruction to run `local-ci auto`, which derives the
+validation plan and runs it. A repository first seen at a stop only gets a
+baseline (the session may have only read it), and content already on a remote
+branch is never held. It
+never runs a check itself (so it cannot recurse or slow every turn), it holds a
+stop at most once per content state (the second stop for unchanged content
+passes, with one line telling the user the push stays blocked) and at most
+three times in a row within one user turn (content a check rewrites on every
+run cannot loop), and a turn that changed nothing is never held. Claude Code labels any held stop "Stop hook error" in its
+notification line; the text that follows is the hook's instruction, not a fault.
+`LOCAL_CI_AUTO=0` in the environment turns it off; the push gate stays on.
 
 All three explain themselves in the denial message and say how to remove them. They
 are **not a sandbox**: they match command text, so an indirect invocation (a

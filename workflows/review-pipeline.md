@@ -168,13 +168,13 @@ counterexample outweighs four dissenting opinions.
 Skill: [`skills/local-ci`](../skills/local-ci/SKILL.md). Hook:
 [`hooks/local-ci-gate.sh`](../hooks/local-ci-gate.sh).
 
-Validation above is recorded with `local-ci run`, so by the time of a push the
-evidence exists and names the content it covers. A push, a PR, or a remote
-workflow run is allowed when exactly the pushed content has a recorded passing
-check and no unresolved failure; the hook denies it otherwise. The hook cannot
-tell whether the right checks ran; the validate stage above decides that. Simplifications and jury fixes change the
-content, so the final re-validation is what makes the push possible, not a
-formality. Remote CI then runs once, as confirmation. A remote failure goes back
+Validation above runs as `local-ci auto` — asked for by the Stop hook whenever a
+turn changed the repository — so by the time of a push the evidence exists and
+names the content it covers. A push, a PR, or a remote workflow run is allowed
+when exactly the pushed content has a recorded validation plan whose every
+required check passed, with no unresolved failure; the hook denies it otherwise.
+Simplifications and jury fixes change the content, so the final re-validation is
+what makes the push possible, not a formality. Remote CI then runs once, as confirmation. A remote failure goes back
 to the top of this pipeline locally, never to another speculative push.
 
 ---

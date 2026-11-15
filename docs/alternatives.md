@@ -204,12 +204,18 @@ from its HTTPS endpoint.
 
 ## CI cost
 
-### Chosen: a content-keyed evidence gate, act where it adds evidence, repository changes proposed per repository
+### Chosen: a derived validation plan run automatically at the end of a turn, a content-keyed gate at publication, repository changes proposed per repository
 
 | Alternative | Why not |
 |---|---|
 | **Instructions only ("run the full gate before pushing")** | That was the previous state. Nothing recorded what ran or for which content, and nothing acted at the moment of the push, which is where the habit of pushing to see shows up. |
-| **Always run every workflow through act before a push** | Slow, image-heavy, and often less faithful than the repository's own commands. Jobs needing secrets or macOS cannot run honestly at all. act is used where the workflow is the only definition of a check. |
+| **Run every workflow job through act, always** | A plain job that runs the same command as a local check would run it twice; jobs needing secrets, a GitHub token, macOS or the Docker socket cannot run honestly; deploy jobs must not run at all. act runs every other affected job by default. |
+| **A repository check list read from the working tree** | The change being validated could rewrite it to `["true"]`. `.local-ci.json` is read from the merge base with the default branch, so it governs only changes made after it was reviewed and merged. |
+| **Publishable once any check passed (the first version)** | One passing `true` covered a repository whose failing test suite never ran. The plan is derived from the repository and every required item must pass. |
+| **Run the checks inside the Stop hook** | A hook cannot hand the agent a failing log to fix, an act job outlasts a sensible hook timeout, and a hook that runs checks at every turn end recurses into its own work. The hook asks once per content state; the agent runs `local-ci auto` where its output is visible. |
+| **Validate after every edit (PostToolUse)** | Runs the suite on half-finished work dozens of times per task. Validation is batched at the end of the turn, and evidence for unchanged content is reused. |
+| **Install the pre-push hook into every repository automatically** | A silent write into every repository a session opens. The PreToolUse gate covers agent pushes without it; the per-repository hook stays opt-in for pushes from scripts. |
+| **Installing act or Docker automatically when missing** | Both are system components (Docker needs privileges). Missing ones are reported, and every job they would have run is recorded unsupported, never passed. |
 | **A global `core.hooksPath` with a pre-push hook** | Silently replaces every repository's own hooks (pre-commit, husky, lefthook). The per-repository hook is installed only where none exists. |
 | **A `git` wrapper first on `PATH`** | Changes `git` for every program and every user session, and is defeated by an absolute path anyway. |
 | **Time-based evidence ("passed in the last hour")** | An edit a minute later is not covered by a check a minute earlier. Content fingerprints are exact and cost one `git status` plus hashing of the changed files. |

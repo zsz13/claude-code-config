@@ -117,7 +117,8 @@ measured result.
 
 ### 6. `hooks/` — deterministic guards and advisors (executed, never loaded)
 
-Nine user-authored hooks. Three block, one asks for approval, five advise. All
+Ten user-authored hooks. Three block commands, one asks for approval, one holds
+the end of a turn until local validation has been asked for, five advise. All
 fail open except the four guards, which fail open on parse errors but deny (or
 ask) on a positive match.
 
@@ -125,7 +126,8 @@ ask) on a positive match.
 |---|---|---|
 | `block-destructive-iac.sh` | PreToolUse(Bash) | **Denies** `terraform`/`tofu` apply, destroy, import, taint, force-unlock, `state mv/rm/push`. Read-only operations always pass. |
 | `block-git-no-verify.sh` + `.py` | PreToolUse(Bash) | **Denies** `git commit/push/merge/rebase --no-verify`, `commit -n`, `-c core.hooksPath=`, and setting `core.hooksPath`. Parsed with `shlex`, so `-n` inside a quoted commit message is not a flag. |
-| `local-ci-gate.sh` + `.py` | PreToolUse(Bash) | **Denies** `git push`, `gh pr create/ready/update-branch`, `gh workflow run`, `gh run rerun`, `gh release create` and dispatch API calls while the published content has no passing evidence from `bin/local-ci`. |
+| `local-ci-gate.sh` + `.py` | PreToolUse(Bash) | **Denies** `git push`, `gh pr create/ready/update-branch`, `gh workflow run`, `gh run rerun`, `gh release create` and dispatch API calls until every required check of the published content's validation plan has passed (`bin/local-ci`). |
+| `local-ci-auto.sh` | SessionStart + PreToolUse(Edit\|Write\|MultiEdit\|NotebookEdit) + Stop | Records each repository's content at session start, or before the first edit of another repository; when the session changed it and that content is not validated, **holds the stop once** per content state with the instruction to run `local-ci auto`. Never runs a check itself. |
 | `skill-install-guard.sh` + `.py` | PreToolUse(Bash\|Write\|Edit\|MultiEdit\|NotebookEdit) | **Asks** before `skills add/update/remove`, `claude plugin install/update/...`, any write into `.claude/skills`, `.agents/skills`, `.codex/skills`, `.claude/commands` or `.claude/plugins` (file tools or shell), and a settings edit that enables a plugin. `skills find`, `skills use` and reads pass. |
 | `large-output-advisor.sh` + `.py` | PreToolUse(Bash) | One-line hint for a command class about to dump a large deterministic output. At most once per session per class. |
 | `read-budget-advisor.sh` + `.py` | PreToolUse + PostToolUse(Read\|Bash) | Hints on re-reading an unchanged file, and on whole-file reads of large files. State keyed by session **and** agent id. |
@@ -165,14 +167,19 @@ surfaced per run — the evidence base for any claim about what this saves.
 ### 8. `bin/local-ci` — local validation evidence and act
 
 One standard-library Python command, the procedure for which is the `local-ci`
-skill. `plan` lists the checks a repository already defines and classifies its
-GitHub Actions jobs (runnable, unsupported, unsafe); `run` executes a check
-(through `run-captured`) and records the result against a fingerprint of the
-tree's content; `act` runs the affected, runnable jobs with nektos/act in a
-stripped environment with no secrets and no Docker socket; `gate` answers
-whether a rev is publishable, which is what the `local-ci-gate` hook and the
-opt-in git `pre-push` hook ask. Evidence lives under
-`~/.cache/claude-hooks/local-ci/`, never in the repository.
+skill. `auto` is the entry point: it derives a validation plan from the
+repository and the changeset — the check commands the repository already
+defines, and the affected GitHub Actions jobs that can run safely here — sorts
+each item into required, unsupported, skipped or remote-only with its reason,
+records the plan against a fingerprint of the tree's content, and runs every
+required check that has not passed for that content (repository commands
+cheapest first, then the jobs under nektos/act in a stripped environment with
+no secrets and no Docker socket). `plan`, `run` and `act` are the same steps
+one at a time, for diagnosis; `gate` answers whether a rev is publishable —
+recorded plan, every required check passed — which is what the `local-ci-gate`
+hook and the opt-in git `pre-push` hook ask; `session` is the
+`local-ci-auto.sh` hook. Evidence lives under `~/.cache/claude-hooks/local-ci/`,
+never in the repository.
 
 ## How components interact
 
@@ -193,8 +200,8 @@ against the same question costs twice and answers once.
 **Hooks never carry policy alone.** The IaC hook enforces what
 `rules/infrastructure.md` and `skills/infrastructure-quality` explain. The
 no-verify hook enforces what `CLAUDE.md`'s quality-gates section states. The
-local-ci gate enforces the "Local-first CI" section, and the `local-ci` skill
-says how to satisfy it. A guard
+local-ci gate and the Stop hook enforce the "Local-first CI" section, and the
+`local-ci` skill says how to satisfy them. A guard
 without its written reason is a mystery denial.
 
 **The context-efficiency layer is a loop.** The advisors hint at the moment of

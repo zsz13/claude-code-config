@@ -1,6 +1,6 @@
 ---
 name: local-ci
-description: Validate locally before anything reaches remote CI - discover a repository's own checks, run the fast relevant ones first and then the full gate, run affected GitHub Actions jobs locally with nektos/act where that helps, and record evidence tied to the exact content being published. Use before git push, creating or updating a PR, or starting a remote workflow; when remote CI failed and needs reproducing; and when changing a repository's CI triggers or cost.
+description: Validate locally before anything reaches remote CI - `local-ci auto` derives a validation plan from a repository's own checks and the GitHub Actions jobs its change affects, runs them (jobs via nektos/act), and records evidence tied to the exact content being published; hooks start it automatically. Use when the Stop hook or the push gate asks for local validation, before git push, a PR or a remote workflow run, when remote CI failed and needs reproducing, and when changing a repository's CI triggers or cost.
 ---
 
 # Local-first CI
@@ -14,36 +14,79 @@ Tool: `~/.claude/bin/local-ci` (Python standard library, no dependencies).
 Evidence lives outside the repository, keyed by tree content, under
 `~/.cache/claude-hooks/local-ci/`.
 
-## 1. Discover (once per task)
+## 1. It starts on its own
+
+Nobody has to ask for local validation, and no one types a CI command:
+
+- **At the end of a turn** (`Stop` hook, `local-ci-auto.sh`): when the session
+  changed a repository and that content has no complete validation, the stop is
+  held once with the instruction to run `~/.claude/bin/local-ci auto`. Run it
+  (Bash, 600000 ms timeout or in the background: act jobs take minutes).
+- **At publication** (`PreToolUse` hook, `local-ci-gate.sh`): `git push`, PR
+  creation and remote workflow runs are denied until the plan passed for the
+  exact content being published. The denial says the same thing: run `auto`.
+
+When implementation is ready, run `auto` before being asked; the hooks are the
+backstop, not the trigger. Do not run it after every edit: once per batch of
+changes, then again only after a fix.
+
+## 2. `local-ci auto`: the plan, then the checks
 
 ```
-~/.claude/bin/local-ci plan
+~/.claude/bin/local-ci auto                # derive, record and run the plan
+~/.claude/bin/local-ci auto --plan-only    # show it; run and record nothing
 ```
 
 It reads what the repository already defines: `package.json` scripts with the
 lockfile's package manager, `pyproject.toml` tools (through `uv run`,
 `poetry run` or `pdm run`), `go.mod`, `Cargo.toml`, Makefile targets,
 `scripts/verify|check|test*`, Terraform, Dockerfiles, compose files, pre-commit,
-git hooks and `core.hooksPath`, and every `.github/workflows/*.yml|yaml` with
-each job classified and the commands its steps run. It installs nothing and
-invents no command. A repository's README, CONTRIBUTING or own `CLAUDE.md`
-outranks the plan when they disagree.
+and every `.github/workflows/*.yml|yaml` with each job classified. It installs
+nothing and invents no command. Every item becomes:
 
-## 2. Validate, cheapest reliable check first
+| Class | Meaning | Counts for publishing |
+|---|---|---|
+| required | runs here | must pass |
+| unsupported | its tool, Docker, act, a secret or a GitHub token is missing; the exact reason is shown | reported unverified, never a pass |
+| skipped | a path filter, or a plain job running the same command as a required local check; the reason is shown | no |
+| remote only | deploy, release, publish, write permissions, release-only workflows | never run locally |
 
-Record each check so the evidence is bound to the content it ran against:
+Below the root, a directory up to two levels down with its own `package.json`,
+`pyproject.toml`, `go.mod` or `Cargo.toml` (a monorepo package) is planned too,
+in its own directory, when the change touches it and the root has no manifest
+of that stack (a root manifest is taken to drive its workspace). Workflows only
+started by hand (`workflow_dispatch`) are skipped; a workflow is relevant when
+any trigger a code change fires (`push`, `pull_request`, `merge_group`) matches
+the changed files. Matrix legs act cannot run (macOS, Windows) are listed
+unsupported next to the job's pass.
 
-```
-~/.claude/bin/local-ci run -- <command>          # e.g. -- uv run pytest -q
-~/.claude/bin/local-ci run --name unit -- 'pnpm run test -- --run'
-```
+It records the plan against the content fingerprint, then runs whatever has not
+passed for that content: the repository's commands cheapest first (format and
+lint, types, tests, builds, e2e and image builds), then the workflow jobs under
+act — deferred while a local check is failing (`--keep-going` runs them anyway).
+A check that modifies files is recorded `changed`, not a pass, and stops the run.
+A `docker build` is required only when a Dockerfile, compose file or dependency
+manifest changed. Exit 0 means every required check passed for exactly this
+content.
 
-Order: formatter check and linter on what changed, type check, the tests the
-change affects, then the full relevant suite and the build before pushing
-(`Quality gates` in `CLAUDE.md`). On a failure, fix locally and rerun only that
-check; `run` refuses to repeat a check that already passed for identical
-content (`--force` overrides). A check that modifies files is recorded as
-`changed`, not a pass: inspect the change, stage it, rerun.
+On a failure: read the log it names, fix the cause, run `auto` again. Checks
+that passed for unchanged content are not rerun; a fix changes the content, so
+what it could affect runs again. Never weaken a check, mark it unsupported, or
+change the repository's workflow to get a pass. A README, CONTRIBUTING or the
+repository's own `CLAUDE.md` outranks the plan when they name a check it cannot
+see: run that one too with `local-ci run -- <cmd>` (any failure blocks).
+
+A repository can state its checks in `.local-ci.json`:
+`{"checks": ["<command>", ...], "exclude": {"<discovered command>": "<why it is not a check here>"}}`.
+It is read only as committed at the merge base with the default branch, so it
+takes effect once merged: a change can never loosen the checks that validate
+it, and adding or editing the file is reported in the plan. Use it when
+discovery guesses wrong (a script that needs an argument), not to skip a check
+that fails; an exclusion without a reason makes the file invalid and ignored.
+
+The single steps, for diagnosis: `plan` (what was discovered and why),
+`run -- <cmd>` (one check, recorded; a one-string command is its own name, so it
+is the plan's check), `act --list` / `act --workflow F --job J` (one job).
 
 By stack, using only what the repository already has:
 
@@ -54,26 +97,25 @@ By stack, using only what the repository already has:
 | Go | `gofmt -l`, `go vet ./...`, `golangci-lint run` if configured, `go test ./...`, `go build ./...` |
 | Docker | `docker build` only when the image or its inputs changed; `docker compose config -q` |
 | Terraform | `fmt -check`, `init -backend=false` + `validate`; plan only with the user's go-ahead for real backends; never apply (hook-enforced) |
-| Workflows | `actionlint` if installed; `local-ci act --list` for what would run |
+| Workflows | `actionlint` if installed; the affected jobs under act |
 
 Do not install a tool the repository does not use when it has a working
-equivalent. Cost is local time and resources too: run the expensive suite once,
-at the end, not after every edit.
+equivalent. A tool that is missing makes its check unsupported; install it only
+when the repository expects it and the user agrees.
 
-## 3. GitHub Actions jobs, locally (only where it adds something)
+## 3. GitHub Actions jobs, locally
 
-```
-~/.claude/bin/local-ci act --list            # what would run, what is skipped and why
-~/.claude/bin/local-ci act                   # affected, runnable jobs
-~/.claude/bin/local-ci act --workflow ci.yml --job test
-```
+`auto` runs every affected, runnable job under act. It skips one only when
+equivalence is established: a *plain* job (setup actions and run steps; no
+matrix, container, services, env, working directory or shell) whose every check
+command is the same command line as a required local check (`npm test` and
+`npm run test` are the same). Anything less runs under act too. Jobs that use
+Docker inside the job (`--docker-socket`, trusted workflows only) or a GitHub
+token are reported unsupported rather than run to a certain failure. Matrix
+jobs run every Linux leg (`job-1`, `job-2`, ...); macOS and Windows legs stay
+remote.
 
-Use act when the workflow is the only definition of a check (a matrix leg, a
-service container, a script only CI calls) or when the workflow itself changed.
-When a job just runs `npm test`, run `npm test` directly: it is faster and the
-same check. `plan` prints each job's commands for exactly this choice.
-
-What `local-ci act` does:
+What act runs with, whether `auto` or `local-ci act` starts it:
 
 - **Preflight.** It checks for `act`, the `docker` CLI and a reachable daemon
   (`docker info`). Any of them missing is recorded as *unsupported*, never as a
@@ -83,7 +125,7 @@ What `local-ci act` does:
 - **Selection.** Workflows with a `pull_request`, `push`, `merge_group` or
   `workflow_dispatch` trigger whose `paths`/`paths-ignore` filters match the
   files changed since the merge base with the default branch; within them,
-  jobs classified *runnable*. `--workflow`/`--job` narrow it explicitly.
+  jobs classified *runnable*. `local-ci act --workflow/--job` narrows it by hand.
 - **Never run, reported as `unsafe`:** jobs with a deployment `environment`,
   write permissions, deploy/release/publish names, steps that publish, push,
   deploy, sync files out or call a cloud CLI (`npm run deploy`, `make release`,
@@ -105,7 +147,8 @@ What `local-ci act` does:
   (`--container-daemon-socket -`), and `--container-options-policy restrict`
   where act supports it (0.2.97 does); on an older act, jobs that set container
   volumes or options, and jobs needing them, are skipped. `--docker-socket`
-  mounts the socket for a workflow you trust that builds images.
+  mounts the socket (root on the machine) for a workflow that builds images,
+  and only when the user says so.
 - **Refusals.** act applies an actrc to every run: the repository's `.actrc`
   could switch the isolation off (`--bind`, `-self-hosted`, secrets, host
   paths), and a user-level actrc is read even with a throwaway `HOME` (on macOS
@@ -143,16 +186,16 @@ service), record it and say so in the final report:
 ~/.claude/bin/local-ci unsupported --name e2e --reason "needs staging credentials"
 ```
 
-It never counts as a pass, and a check that ran and failed cannot be relabelled
-unsupported. A check is identified by its name, command and directory: running
-something else under a failed check's name does not clear it; only that check
-passing again does. Publishing still needs at least one passing check for that
-content.
+It never counts as a pass. A check that ran and failed cannot be relabelled
+unsupported, and neither can a required check of the plan: it can run here, so
+it must pass, or the user decides to publish without it. A check is identified
+by its name, command and directory: running something else under a failed
+check's name does not clear it; only that check passing again does.
 
-What the gate proves is narrow: *this exact content has recorded passing
-evidence and no unresolved failure*. It cannot know which checks the repository
-needs. Choosing them, by the order in §2, is the job, and the report says which
-ran.
+What the gate proves: *this exact content has a recorded plan, every check it
+requires passed, and nothing failed since*. A pass of some other check never
+stands in for a required one. It cannot see a check the repository documents
+only in prose; §2 says what to do about those.
 
 ## 5. Publish exactly what was validated
 
@@ -177,9 +220,11 @@ say so. Never push again just to see whether it passes.
 
 | Mechanism | Covers | Does not cover |
 |---|---|---|
+| `local-ci-auto` SessionStart + PreToolUse(file tools) + Stop hook | the end of every turn that changed a repository the session started in or edited with a file tool, while its content is not validated and not already on a remote branch: held once per content state, at most three times in a row | a repository the session changed only through Bash commands and did not start in; a session with `LOCAL_CI_AUTO=0` |
 | `local-ci-gate` PreToolUse hook (deny) | `git push` with its refs (`--all`, `--tags`, `:`, `src:dst`), through `-C`, `--git-dir`, `cd`, `sh -c`, `sudo`/`env`/`timeout` wrappers and `$(...)`; `gh pr create`, `gh pr ready`, `gh pr update-branch`, `gh workflow run`, `gh run rerun`, `gh release create`, `gh api .../dispatches\|update-branch\|rerun` | a script file or a command assembled at run time; `env -C`/`sudo -D` directories; GitHub MCP tools (the hook sees Bash only); `gh pr merge`, deliberately (it follows remote checks); whether the right checks were chosen |
 | Opt-in `pre-push` git hook | every `git push` from an agent session, through any wrapper or script, checked per pushed commit | `gh` operations that do not push; human pushes (not enforced); a command that deliberately unsets `CLAUDECODE` |
-| This skill and `CLAUDE.md` | choosing the relevant checks, act use, reporting | nothing executes them |
+| `local-ci auto` | which checks are required, act selection, equivalence, reporting what is unsupported | checks the repository documents only in prose |
+| This skill and `CLAUDE.md` | fixing failures, reporting | nothing executes them |
 | The repository's workflow triggers | whether remote CI runs at all after a push | this configuration cannot change them |
 
 `local-ci hook install` adds the pre-push gate to a repository only when it has
@@ -227,7 +272,6 @@ minimal `permissions`).
 
 ## Report
 
-State the commands run with their result, `local-ci status` for HEAD, every
-check recorded unsupported with its reason, act jobs run and skipped (and why),
-and that remote CI is still to run. Never present local evidence as remote
-proof.
+State what `auto` ran and its result, every check recorded unsupported with its
+reason, act jobs run, skipped and remote-only (and why), and that remote CI is
+still to run. Never present local evidence as remote proof.

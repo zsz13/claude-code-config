@@ -103,15 +103,18 @@ the caveats in [docs/benchmarks.md](docs/benchmarks.md#1-context-efficiency-laye
 where good judgement is not a sufficient safeguard. Both explain themselves and
 say how to remove them.
 
-**Local first, remote CI last.** [`bin/local-ci`](bin/local-ci) finds the checks a
-repository already defines, records each result against the exact content it ran
-on, and runs the affected GitHub Actions jobs locally with
-[act](https://github.com/nektos/act) — with no secrets, no Docker socket, and
-never a deploy or publish job. A hook denies `git push`, PR creation and remote
-workflow runs until the exact content being published has a recorded passing
-check and no unresolved failure, so remote CI stops being the debugger. Which
-checks are the right ones stays a matter of policy, not of the hook. What this enforces, and what it cannot (a repository's own workflow
-triggers), is in [docs/why-this-setup.md](docs/why-this-setup.md#why-local-first-ci-and-what-is-actually-enforced).
+**Local first, remote CI last — automatically.** [`bin/local-ci`](bin/local-ci)
+derives a validation plan from the checks a repository already defines and the
+GitHub Actions jobs its change affects, runs them — the jobs locally with
+[act](https://github.com/nektos/act), with no secrets, no Docker socket, and
+never a deploy or publish job — and records each result against the exact
+content it ran on. Nobody has to ask for it: when a session changed a
+repository, a `Stop` hook holds the end of the turn until the plan has been run,
+and a `PreToolUse` hook denies `git push`, PR creation and remote workflow runs
+until every required check of the plan passed for the exact content being
+published, so remote CI stops being the debugger. What this enforces, and what
+it cannot (a repository's own workflow triggers), is in
+[docs/why-this-setup.md](docs/why-this-setup.md#why-local-first-ci-and-what-is-actually-enforced).
 
 ## Install
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """local-ci: local-first validation evidence, and GitHub Actions jobs run locally with act.
 
+    local-ci auto [--plan-only] [--keep-going]   derive the validation plan, run what has not passed, record it
     local-ci plan [--json]                       what this repository checks, and how to run it here
     local-ci run [--name N] [--force] -- CMD...  run a check; record its result for this exact tree
     local-ci unsupported --name N --reason TEXT  record a check that cannot run here (never a pass)
@@ -9,16 +10,19 @@
     local-ci gate [--rev REV]... [--json]        exit 0 only when every REV (default HEAD) is publishable
     local-ci pre-push                            git pre-push entry point (enforced in agent sessions)
     local-ci hook install|print                  wire pre-push into this repository without replacing hooks
+    local-ci session start|touch|stop            Claude Code hooks: baseline, then ask for `auto` at Stop
 
 Evidence is keyed by a fingerprint of tree content: every tracked and untracked, non-ignored file
 (path, mode, git blob id). Validating uncommitted work and then committing all of it keeps the
 fingerprint; any further edit, or committing only part of it, changes it, so old evidence never
 covers new content; an untracked file present during a check but left out of the commit makes the
-evidence cover different content too. A rev is publishable when exactly its committed tree has at
-least one passing check and no check that failed or modified the tree without passing since. A check
-is identified by its name, command and directory, so another command under a failed check's name
-does not clear it, and an unsupported result never does. Unsupported checks are reported, never
-counted as passes. What the gate cannot know is whether the right checks were run: that is policy.
+evidence cover different content too. `auto` derives a validation plan from the repository and the
+changeset - its own check commands, and the affected, safely runnable GitHub Actions jobs under act -
+and records it for that content. A rev is publishable when exactly its committed tree has a recorded
+plan, every check the plan requires passed, at least one check passed, and no check failed or
+modified the tree without passing since. A check is identified by its name, command and directory,
+so another command under a failed check's name does not clear it, an unrelated pass never stands in
+for a required check, and an unsupported result never counts as a pass.
 
 Exit: 0 pass/publishable, 1 failure/not publishable, 2 usage error, 3 nothing ran (unsupported,
 unavailable). State: $LOCAL_CI_STATE_DIR, else ~/.cache/claude-hooks/local-ci (records older than 30
@@ -199,7 +203,7 @@ def append_record(root: str, rec: dict) -> None:
         with os.fdopen(fd, "w") as fh:
             fh.write("".join(json.dumps(r) + "\n" for r in keep))
         os.replace(tmp, p)
-        for old in [*d.glob("*.jsonl"), *(d / "act-logs").glob("*.log")]:
+        for old in [*d.glob("*.jsonl"), *(d / "act-logs").glob("*.log"), *(d / "sessions").glob("*.json")]:
             try:
                 if old.stat().st_mtime < cutoff:
                     old.unlink()
@@ -222,7 +226,7 @@ def summarize(records: list[dict], fp: str) -> dict[str, tuple[dict, bool]]:
     blocks until the same check passes again. An unsupported result (act or Docker unavailable later)
     neither clears a failure nor erases a pass: it only stands when the check never ran."""
     out: dict[str, tuple[dict, bool]] = {}
-    for r in sorted((r for r in records if r.get("fp") == fp), key=lambda r: r.get("ts", 0)):
+    for r in sorted((r for r in records if r.get("fp") == fp and r.get("kind") != "plan"), key=lambda r: r.get("ts", 0)):
         prev, blocked = out.get(key(r), (r, False))
         if r["status"] == "unsupported" and prev is not r and prev["status"] != "unsupported":
             continue
@@ -234,22 +238,51 @@ def summarize(records: list[dict], fp: str) -> dict[str, tuple[dict, bool]]:
     return out
 
 
+def latest_plan(records: list[dict], fp: str) -> dict | None:
+    plans = [r for r in records if r.get("fp") == fp and r.get("kind") == "plan"]
+    return max(plans, key=lambda r: r.get("ts", 0)) if plans else None
+
+
 def verdict(records: list[dict], fp: str) -> dict:
-    cur = summarize(records, fp).values()
+    """Publishable: a validation plan was recorded for exactly this content, every check it requires
+    passed and has not failed since, nothing else failed, and at least one check passed. A pass of
+    some other check never stands in for a required one, and unsupported is never a pass."""
+    summary = summarize(records, fp)
+    cur = summary.values()
     passes = [label(r) for r, b in cur if r["status"] == "pass"]
     blocking = [label(r) for r, b in cur if b]
     unsupported = [{"name": label(r), "reason": r.get("detail", "")} for r, b in cur
                    if r["status"] == "unsupported" and not b]
+    plan = latest_plan(records, fp)
+    missing = []
+    for req in (plan or {}).get("required", []):
+        rec, blocked = summary.get(req["key"], ({}, False))
+        # act ran and itself found it could not run the job here (an `if:` false for the local event,
+        # an image it cannot pull): unsupported, reported above, and no one can make it pass. A record
+        # without an exit code (act unavailable when `local-ci act` was tried) does not count.
+        if rec.get("status") == "unsupported" and not blocked and "exit" in rec:
+            continue
+        if rec.get("status") != "pass" or blocked:
+            missing.append(req["label"] + (f" ({rec['status']})" if rec.get("status") else " (not run)"))
+    for u in (plan or {}).get("unsupported", []):
+        if u["name"] not in {x["name"] for x in unsupported}:
+            unsupported.append(u)
+    others = sorted({r["fp"][:12] for r in records if r.get("fp") != fp})
+    stale = f" (evidence exists only for other content: {', '.join(others[-3:])}; it is stale)" if others else ""
     if blocking:
         why = "a check failed or modified the tree and has not passed since: " + ", ".join(blocking)
+    elif plan is None:
+        why = "no validation plan has run for this exact content - run `local-ci auto`" + stale
+    elif missing:
+        why = "required checks of the validation plan have not passed: " + ", ".join(missing)
     elif not passes:
-        others = sorted({r["fp"][:12] for r in records if r.get("fp") != fp})
-        why = ("no check has passed for this exact content" +
-               (f" (evidence exists only for other content: {', '.join(others[-3:])}; it is stale)" if others else ""))
+        why = ("the validation plan found no check this repository defines; record the one it documents with "
+               "`local-ci run -- <cmd>`")
     else:
         why = ""
-    return {"fp": fp, "ok": bool(passes) and not blocking, "passes": passes, "blocking": blocking,
-            "unsupported": unsupported, "why": why}
+    return {"fp": fp, "ok": plan is not None and bool(passes) and not blocking and not missing, "passes": passes,
+            "blocking": blocking, "missing": missing, "unsupported": unsupported, "planned": plan is not None,
+            "skipped": (plan or {}).get("skipped", []), "why": why}
 
 
 def record(root: str, fp: str, name: str, kind: str, status: str, **extra) -> None:
@@ -443,6 +476,8 @@ def children(lines: list[str], lo: int, hi: int) -> dict[str, tuple[str, int, in
 
 
 def scalar_list(value: str, lines: list[str], lo: int, hi: int) -> list[str]:
+    if value.startswith("[") and "]" not in value:  # a flow sequence continued on the following lines
+        value += " " + " ".join(lines[i].strip() for i in range(lo, hi))
     if value.startswith("["):
         return [x.strip().strip("'\"") for x in value.strip("[]").split(",") if x.strip()]
     if value:
@@ -478,7 +513,7 @@ def parse_workflow(path: Path) -> dict:
     on = next((top[k] for k in ("on", "true") if k in top), ("", 0, 0))
     triggers: dict[str, dict] = {}
     if on[0]:
-        for t in scalar_list(on[0], lines, 0, 0):
+        for t in scalar_list(on[0], lines, on[1], on[2]):
             triggers[t] = {}
     else:
         trig = children(lines, on[1], on[2])
@@ -491,9 +526,10 @@ def parse_workflow(path: Path) -> dict:
                 triggers[t] = {}
     wf_text = "\n".join(lines[top["permissions"][1]:top["permissions"][2]]) + top["permissions"][0] if "permissions" in top else ""
     jobs = []
+    wf_shapes = "env" in top or "defaults" in top  # workflow-wide env or default working directory/shell
     if "jobs" in top:
         for job_id, (_v, lo, hi) in children(lines, top["jobs"][1], top["jobs"][2]).items():
-            jobs.append(classify_job(job_id, lines, lo, hi, wf_text))
+            jobs.append(classify_job(job_id, lines, lo, hi, wf_text, wf_shapes))
     inherit_needs(jobs)
     return {"file": path.name, "name": top.get("name", (path.stem,))[0].strip("'\"") or path.stem,
             "triggers": triggers, "jobs": jobs}
@@ -523,7 +559,11 @@ def inherit_needs(jobs: list[dict]) -> None:
                             + "; ".join(b["reasons"])]
 
 
-def classify_job(job_id: str, lines: list[str], lo: int, hi: int, wf_perm: str) -> dict:
+SETUP_ACTION = re.compile(r"(?i)^(?:actions/(?:checkout|cache|setup-[\w-]+)|astral-sh/setup-uv|pnpm/action-setup|"
+                          r"oven-sh/setup-bun|dtolnay/rust-toolchain|hashicorp/setup-terraform)@")
+
+
+def classify_job(job_id: str, lines: list[str], lo: int, hi: int, wf_perm: str, wf_shapes: bool = False) -> dict:
     keys = children(lines, lo, hi)
     body = "\n".join(lines[lo:hi])
     name = keys.get("name", (job_id,))[0].strip("'\"") or job_id
@@ -577,10 +617,17 @@ def classify_job(job_id: str, lines: list[str], lo: int, hi: int, wf_perm: str) 
     status = "unsafe" if unsafe else "unsupported" if unsupported else "runnable"
     setup = re.compile(r"(?i)^(?:(?:sudo\s+)?apt(?:-get)?\s|pip\s+install|python -m pip install|npm\s+ci\b|"
                        r"(?:pnpm|yarn|bun|npm)\s+install|uv\s+sync|poetry\s+install|go\s+mod\s+download|echo\b)")
-    checks = [r for r in runs if r and not setup.match(r)]
+    checks = [r for r in runs if r and not all(setup.match(x) for x in r.splitlines() if x.strip())]
+    # "plain": nothing but setup actions and run steps, with no matrix, container, services, env,
+    # working directory or shell that could make the same command line mean something else in CI.
+    plain = (not wf_shapes and not ({"strategy", "container", "services", "env", "defaults"} & set(keys))
+             and not re.search(r"(?m)^\s*(?:-\s+)?(?:env|working-directory|shell)\s*:", body)
+             and all(SETUP_ACTION.search(u) for u in uses))
     return {"id": job_id, "name": name, "runs_on": runs_on, "status": status, "own_status": status,
-            "reasons": unsafe or unsupported, "limits": limited, "commands": checks[:6], "needs": needs,
-            "mounts": mounts}
+            "reasons": unsafe or unsupported, "limits": limited, "commands": checks[:6], "all_commands": checks,
+            "needs": needs, "mounts": mounts, "plain": plain, "matrix": "strategy" in keys,
+            "docker_inside": any(DOCKER_STEP.search(x) for x in runs + uses),
+            "token": bool(re.search(r"\$\{\{\s*(?:secrets\.GITHUB_TOKEN|github\.token)\s*\}\}", body))}
 
 
 def default_branch(root: str) -> str | None:
@@ -660,8 +707,12 @@ def discover_workflows(root: Path) -> list[dict]:
                           if unsafe_trig else f"no push/pull_request trigger ({', '.join(wf['triggers']) or 'none found'})")
             wf["event"], wf["relevant"], wf["relevance"] = None, False, wf["skip"]
         else:
-            wf["event"] = event
-            wf["relevant"], wf["relevance"] = path_relevant(wf["triggers"].get(event, {}), changed)
+            # Relevant when any trigger a code change fires is: a push with no filter runs the workflow
+            # even when the pull_request filter does not match. act then runs it with that event.
+            code = [e for e in ("pull_request", "push", "merge_group", "pull_request_target") if e in wf["triggers"]
+                    and not (set(wf["triggers"][e]) & {"tags"} and not set(wf["triggers"][e]) - {"tags"})]
+            rel = [(e, *path_relevant(wf["triggers"][e], changed)) for e in code] or [(event, True, "no path filter")]
+            wf["event"], wf["relevant"], wf["relevance"] = next((r for r in rel if r[1]), rel[0])
         out.append(wf)
     return out
 
@@ -707,19 +758,24 @@ def act_preflight() -> tuple[list[str], dict]:
             problems.append("act did not answer `act --version` within 20s")
     else:
         problems.append("act is not installed (macOS: `brew install act`; Linux: https://nektosact.com/installation/)")
-    if not shutil.which("docker"):
-        problems.append("docker CLI is not installed; act needs a Docker-compatible engine")
-    else:
-        try:
-            r = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}} {{.Architecture}}"],
-                               capture_output=True, text=True, timeout=20)
-            if r.returncode == 0 and r.stdout.strip():
-                info["docker"] = r.stdout.strip()
-            else:
-                problems.append("Docker daemon is not running or not reachable (start Docker Desktop, colima, or dockerd)")
-        except subprocess.TimeoutExpired:
-            problems.append("Docker daemon did not answer within 20s")
+    problem, info["docker"] = docker_status()
+    if problem:
+        problems.append(problem)
     return problems, info
+
+
+def docker_status() -> tuple[str | None, str | None]:
+    """(problem, "version arch"): exactly one of them is None."""
+    if not shutil.which("docker"):
+        return "docker CLI is not installed; act needs a Docker-compatible engine", None
+    try:
+        r = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}} {{.Architecture}}"],
+                           capture_output=True, text=True, timeout=20)
+    except subprocess.TimeoutExpired:
+        return "Docker daemon did not answer within 20s", None
+    if r.returncode == 0 and r.stdout.strip():
+        return None, r.stdout.strip()
+    return "Docker daemon is not running or not reachable (start Docker Desktop, colima, or dockerd)", None
 
 
 def act_environment(tmp: str) -> dict[str, str]:
@@ -805,7 +861,12 @@ def classify_act(rc: int, log: str, job: dict) -> tuple[str, str]:
 
     steps = [m.group(1).strip() for m in STEP_FAIL.finditer(log)]
     infra, hinted = line_of(INFRA), line_of(HINT)
-    ours = any(m.group(1).rsplit("/", 1)[-1] in (job["id"], job["name"]) for m in JOB_OK.finditer(log))
+    def is_ours(prefix: str) -> bool:  # "<workflow>/<job name>"; act names matrix legs JOB-1, JOB-2, ...
+        p = prefix.strip()
+        cands = [p, re.sub(r"-\d+$", "", p)] if job.get("matrix") else [p]
+        return any(c == x or c.endswith("/" + x) for c in cands for x in (job["id"], job["name"]))
+
+    ours = any(is_ours(m.group(1)) for m in JOB_OK.finditer(log))
     if rc == 0:
         if ours:
             return "pass", "job succeeded under act"
@@ -831,6 +892,90 @@ def needs_closure(wf: dict, job: dict) -> list[dict]:
     return list(out.values())
 
 
+def runner_images(specs: list[str] | None) -> dict[str, str] | None:
+    """The runs-on label -> image map: the defaults, overridden by --platform LABEL=IMAGE. None (after
+    saying why) for a malformed spec or an act option in place of an image, such as -self-hosted."""
+    images = dict(DEFAULT_IMAGES)
+    for spec in specs or []:
+        label, _, image = spec.partition("=")
+        if not label or not image or image.startswith("-"):
+            print(f"local-ci: --platform wants LABEL=IMAGE (an image, never -self-hosted): {spec}", file=sys.stderr)
+            return None
+        images[label] = image
+    return images
+
+
+def act_refusal(root: str) -> str | None:
+    """Why local-ci will not start act in this repository at all, or None."""
+    if (Path(root) / ".actrc").is_file():
+        return ("this repository has an .actrc, which act applies to every run and which can switch the isolation "
+                "off (secrets, --bind, -self-hosted, host paths). Choose images with `--platform LABEL=IMAGE`, or "
+                "run act yourself if you trust this repository.")
+    users = user_actrc_files()
+    if users:
+        return ("act applies " + ", ".join(map(str, users)) + " to every run, and it can inject secrets or switch "
+                "the isolation off. Move it aside while local-ci runs act (choose images with --platform), or run "
+                "act yourself.")
+    leaks = leaking_files(root)
+    if leaks:
+        return ("these look like secrets and are ignored only by your global or .git/info excludes, so act would "
+                "copy them into the job container: " + ", ".join(leaks[:5]) + ". Add them to the repository's "
+                ".gitignore or move them out of the work tree.")
+    return None
+
+
+def run_act_jobs(root: str, fp: str, selected: list[tuple[dict, dict, str]], images: dict[str, str], *,
+                 native_arch: bool, docker_socket: bool, restrict: bool, timeout: int, force: bool) -> list[str]:
+    """Run each (workflow, job, event) under act, record pass/fail/unsupported for content fp, and return
+    the statuses. A job that already passed for fp under the same event is not rerun unless forced."""
+    act = shutil.which("act") or "act"
+    refusal = act_refusal(root)  # again: a check that ran since the plan may have written such a file
+    if refusal:
+        print(f"  act not started - {refusal}")
+        for wf, _job, event in selected:
+            record(root, fp, f"act:{wf['file']}:{_job['id']}", "act", "unsupported", detail=refusal, cmd=f"event={event}")
+        return ["unsupported"] * len(selected)
+    logdir = state_dir() / "act-logs"
+    logdir.mkdir(parents=True, exist_ok=True)
+    statuses = []
+    done = summarize(read_records(root), fp)
+    with tempfile.TemporaryDirectory(prefix="local-ci-") as tmp:
+        env = act_environment(tmp)
+        empty = os.path.join(tmp, "empty")
+        Path(empty).write_text("")
+        for wf, job, event in selected:
+            name = f"act:{wf['file']}:{job['id']}"
+            prev, blocked = done.get(key({"name": name, "cmd": f"event={event}"}), ({}, False))
+            if prev.get("status") == "pass" and not blocked and not force:
+                print(f"  PASS (cached) {name} - already passed for this exact content ({event}); --force to rerun")
+                statuses.append("pass")
+                continue
+            payload = os.path.join(tmp, f"{event}.json")
+            Path(payload).write_text(json.dumps(event_payload(root, event)))
+            cmd = act_command(act, f".github/workflows/{wf['file']}", job["id"], event, payload,
+                              empty, images, native_arch, docker_socket, restrict)
+            log = logdir / f"{time.strftime('%Y%m%d-%H%M%S')}-{wf['file']}-{job['id']}.log"
+            t0 = time.time()
+            with open(log, "w") as fh:
+                try:
+                    rc = subprocess.run(cmd, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=fh,
+                                        stderr=subprocess.STDOUT, timeout=timeout).returncode
+                except subprocess.TimeoutExpired:
+                    rc = 124
+                    fh.write(f"\nlocal-ci: timed out after {timeout}s\n")
+            status, detail = classify_act(rc, read_text(log), job)
+            if rc == 124:
+                status, detail = "fail", f"timed out after {timeout}s"
+            if worktree_fingerprint(root)[0] != fp:  # act copied whatever the tree was by then
+                status, detail = "changed", f"{detail}; the tree changed while the job ran - rerun"
+            record(root, fp, name, "act", status, detail=detail, exit=rc, log=str(log),
+                   duration=round(time.time() - t0, 1), cmd=f"event={event}")
+            print(f"  {status.upper():11} {name} ({event}, {time.time() - t0:.0f}s) - {detail}")
+            print(f"              log: {log}")
+            statuses.append(status)
+    return statuses
+
+
 def cmd_act(args, root: str) -> int:
     wfs = discover_workflows(Path(root))
     if not wfs:
@@ -841,13 +986,9 @@ def cmd_act(args, root: str) -> int:
         if not wfs:
             print(f"local-ci act: no workflow named {args.workflow}", file=sys.stderr)
             return EXIT_USAGE
-    images = dict(DEFAULT_IMAGES)
-    for spec in args.platform or []:
-        label, _, image = spec.partition("=")
-        if not label or not image or image.startswith("-"):
-            print(f"local-ci act: --platform wants LABEL=IMAGE (an image, never -self-hosted): {spec}", file=sys.stderr)
-            return EXIT_USAGE
-        images[label] = image
+    images = runner_images(args.platform)
+    if images is None:
+        return EXIT_USAGE
     selected, skipped = [], []
     for wf in wfs:
         explicit = bool(args.workflow or args.job)
@@ -885,22 +1026,9 @@ def cmd_act(args, root: str) -> int:
     if conflicted:
         print("local-ci act: unmerged paths; resolve conflicts first", file=sys.stderr)
         return EXIT_FAIL
-    if (Path(root) / ".actrc").is_file():
-        print("local-ci act: refusing - this repository has an .actrc, which act applies to every run and which "
-              "can switch the isolation off (secrets, --bind, -self-hosted, host paths). Choose images with "
-              "`local-ci act --platform LABEL=IMAGE`, or run act yourself if you trust this repository.")
-        return EXIT_UNSUPPORTED
-    users = user_actrc_files()
-    if users:
-        print("local-ci act: refusing - act applies " + ", ".join(map(str, users)) + " to every run, and it can "
-              "inject secrets or switch the isolation off. Move it aside while local-ci runs act (choose images "
-              "with --platform), or run act yourself.")
-        return EXIT_UNSUPPORTED
-    leaks = leaking_files(root)
-    if leaks:
-        print("local-ci act: refusing - these look like secrets and are ignored only by your global or "
-              ".git/info excludes, so act would copy them into the job container: " + ", ".join(leaks[:5])
-              + ". Add them to the repository's .gitignore or move them out of the work tree.")
+    refusal = act_refusal(root)
+    if refusal:
+        print(f"local-ci act: refusing - {refusal}")
         return EXIT_UNSUPPORTED
     act = shutil.which("act") or "act"
     restrict = act_supports(act, "--container-options-policy")
@@ -912,43 +1040,9 @@ def cmd_act(args, root: str) -> int:
                 print(f"  skip  {wf['file']}:{job['id']} - `{mount['id']}` sets container volumes/options and "
                       "this act cannot restrict them")
     print(f"local-ci act: act {info['act']}, docker {info['docker']}")
-    logdir = state_dir() / "act-logs"
-    logdir.mkdir(parents=True, exist_ok=True)
-    statuses = []
-    done = summarize(read_records(root), fp)
-    with tempfile.TemporaryDirectory(prefix="local-ci-") as tmp:
-        env = act_environment(tmp)
-        empty = os.path.join(tmp, "empty")
-        Path(empty).write_text("")
-        for wf, job in selected:
-            name = f"act:{wf['file']}:{job['id']}"
-            event = args.event or wf["event"]
-            prev, blocked = done.get(key({"name": name, "cmd": f"event={event}"}), ({}, False))
-            if prev.get("status") == "pass" and not blocked and not args.force:
-                print(f"  PASS (cached) {name} - already passed for this exact content ({event}); --force to rerun")
-                statuses.append("pass")
-                continue
-            payload = os.path.join(tmp, f"{event}.json")
-            Path(payload).write_text(json.dumps(event_payload(root, event)))
-            cmd = act_command(act, f".github/workflows/{wf['file']}", job["id"], event, payload,
-                              empty, images, args.native_arch, args.docker_socket, restrict)
-            log = logdir / f"{time.strftime('%Y%m%d-%H%M%S')}-{wf['file']}-{job['id']}.log"
-            t0 = time.time()
-            with open(log, "w") as fh:
-                try:
-                    rc = subprocess.run(cmd, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=fh,
-                                        stderr=subprocess.STDOUT, timeout=args.timeout).returncode
-                except subprocess.TimeoutExpired:
-                    rc = 124
-                    fh.write(f"\nlocal-ci: timed out after {args.timeout}s\n")
-            status, detail = classify_act(rc, read_text(log), job)
-            if rc == 124:
-                status, detail = "fail", f"timed out after {args.timeout}s"
-            record(root, fp, name, "act", status, detail=detail, exit=rc, log=str(log),
-                   duration=round(time.time() - t0, 1), cmd=f"event={event}")
-            print(f"  {status.upper():11} {name} ({event}, {time.time() - t0:.0f}s) - {detail}")
-            print(f"              log: {log}")
-            statuses.append(status)
+    statuses = run_act_jobs(root, fp, [(wf, job, args.event or wf["event"]) for wf, job in selected], images,
+                            native_arch=args.native_arch, docker_socket=args.docker_socket, restrict=restrict,
+                            timeout=args.timeout, force=args.force)
     for f, j, why in skipped:
         if why.startswith(("unsafe", "unsupported")):
             print(f"  not run locally: {f}:{j} - remote CI is its only check")
@@ -978,22 +1072,32 @@ def cmd_run(args, root: str) -> int:
     if conflicted:
         print(f"local-ci run: unmerged paths ({', '.join(conflicted[:5])}); resolve them first", file=sys.stderr)
         return EXIT_FAIL
-    name = args.name or shlex.join(cmd)
-    here = os.path.relpath(os.getcwd(), root)
-    prev, blocked = summarize(read_records(root), fp).get(key({"name": name, "cmd": shlex.join(cmd), "cwd": here}),
+    return run_check(root, fp, args.name or cmd_name(cmd), cmd, os.path.relpath(os.getcwd(), root),
+                     force=args.force, raw=args.raw)
+
+
+def cmd_name(cmd: list[str]) -> str:
+    """A check's name and command identity: a one-string command line as given, otherwise its words
+    joined, so `run -- 'npm test'`, `run -- npm test` and the plan's `npm test` are the same check."""
+    return cmd[0] if len(cmd) == 1 else shlex.join(cmd)
+
+
+def run_check(root: str, fp: str, name: str, cmd: list[str], here: str, *, force: bool = False,
+              raw: bool = False) -> int:
+    prev, blocked = summarize(read_records(root), fp).get(key({"name": name, "cmd": cmd_name(cmd), "cwd": here}),
                                                           ({}, False))
-    if prev.get("status") == "pass" and not blocked and not args.force:
+    if prev.get("status") == "pass" and not blocked and not force:
         print(f"local-ci: PASS (cached) {name} - already passed for this exact content (tree {fp[:12]}); "
               "--force to rerun")
         return EXIT_OK
     # One string with spaces is a shell command line (as with run-captured); otherwise argv as given.
     argv = ["bash", "-c", cmd[0]] if len(cmd) == 1 and " " in cmd[0] else cmd
     runner = Path(__file__).resolve().with_name("run-captured")
-    if runner.is_file() and os.access(runner, os.X_OK) and not args.raw:
+    if runner.is_file() and os.access(runner, os.X_OK) and not raw:
         argv = [str(runner), "--label", "local-ci", "--", *argv]
     t0 = time.time()
     try:
-        rc = subprocess.run(argv).returncode
+        rc = subprocess.run(argv, cwd=os.path.join(root, here)).returncode
     except FileNotFoundError as e:
         print(f"local-ci: {e}", file=sys.stderr)
         rc = 127
@@ -1003,8 +1107,8 @@ def cmd_run(args, root: str) -> int:
     if after != fp:
         status, detail = "changed", f"exit {rc}; the check modified the tree - inspect the change, stage it, rerun"
     record(root, fp, name, "cmd", status, detail=detail, exit=rc, duration=round(time.time() - t0, 1),
-           cmd=shlex.join(cmd), cwd=here)
-    print(f"local-ci: {status.upper()} {name} (tree {fp[:12]}, {time.time() - t0:.0f}s){'' if status == 'pass' else ' - ' + detail}")
+           cmd=cmd_name(cmd), cwd=here)
+    print(f"local-ci: {status.upper()} {label({'name': name, 'cwd': here})} (tree {fp[:12]}, {time.time() - t0:.0f}s){'' if status == 'pass' else ' - ' + detail}")
     return rc if rc else (EXIT_FAIL if status != "pass" else EXIT_OK)
 
 
@@ -1013,6 +1117,12 @@ def cmd_unsupported(args, root: str) -> int:
     if any(r["name"] == args.name and blocked for r, blocked in summarize(read_records(root), fp).values()):
         print(f"local-ci: refusing - `{args.name}` ran and failed for this content; a failing check is not "
               "unsupported. Fix it, or tell the user why it cannot pass here.", file=sys.stderr)
+        return EXIT_FAIL
+    plan = latest_plan(read_records(root), fp)
+    if plan and args.name in {r["label"] for r in plan.get("required", [])}:
+        print(f"local-ci: refusing - `{args.name}` is a required check of this content's validation plan and can "
+              "run here, so it must pass. If it cannot, tell the user; publishing it unvalidated is their call.",
+              file=sys.stderr)
         return EXIT_FAIL
     record(root, fp, args.name, "manual", "unsupported", detail=args.reason)
     print(f"local-ci: UNSUPPORTED {args.name} recorded for tree {fp[:12]} - report it as unverified: {args.reason}")
@@ -1024,6 +1134,8 @@ def describe(v: dict, label: str) -> list[str]:
            + ("" if v["ok"] else f" ({v['why']})")]
     if v["passes"]:
         out.append("  passed: " + ", ".join(v["passes"]))
+    if v.get("missing"):
+        out.append("  required, not passed: " + ", ".join(v["missing"]))
     for u in v["unsupported"]:
         out.append(f"  unverified locally: {u['name']} - {u['reason']}")
     return out
@@ -1101,7 +1213,8 @@ def cmd_pre_push(_args, root: str) -> int:
     for r in res:
         for line in describe(r, r["rev"][:12]):
             print("  " + line, file=sys.stderr)
-    print("  Validate locally first (`local-ci plan`, then `local-ci run -- <check>`), then push again.", file=sys.stderr)
+    print(f"  Validate locally first ({shlex.quote(self_path())} auto), commit exactly what passed, then push again.",
+          file=sys.stderr)
     return EXIT_FAIL
 
 
@@ -1172,9 +1285,11 @@ def cmd_plan(args, root: str) -> int:
     wfs = discover_workflows(rp)
     base, changed = changed_files(root)
     problems, info = act_preflight() if wfs else ([], {})
+    validation = build_plan(root)[0]
     if args.json:
         print(json.dumps({"root": root, "worktree": wt, "git_hooks": hooks, "checks": stacks, "workflows": wfs,
-                          "base": base, "changed": changed, "act": {"problems": problems, **info}}, indent=2))
+                          "base": base, "changed": changed, "act": {"problems": problems, **info},
+                          "validation": validation}, indent=2))
         return EXIT_OK
     print(f"local-ci plan - {root}")
     print(f"tree {wfp[:12]}: " + ("validated: " + ", ".join(wt["passes"]) if wt["ok"] else "not validated yet"))
@@ -1195,6 +1310,7 @@ def cmd_plan(args, root: str) -> int:
             print(f"    note: {n}")
     if not wfs:
         print("\nNo GitHub Actions workflows: act is not needed here.")
+        print_plan(validation, wfp)
         return EXIT_OK
     print(f"\nGitHub Actions ({len(wfs)} workflow file(s)); `local-ci act` runs the relevant runnable jobs:")
     for wf in wfs:
@@ -1209,7 +1325,403 @@ def cmd_plan(args, root: str) -> int:
                 first = c.splitlines()[0] + (" ..." if "\n" in c else "")
                 print(f"      runs: {first}")
     print("\nact: " + ("; ".join(problems) if problems else f"act {info.get('act')}, docker {info.get('docker')}"))
-    print("Prefer the jobs' commands run directly when they are faster; use act for what only the workflow defines.")
+    print_plan(validation, wfp)
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------- automatic validation plan
+
+def cost_rank(cmd: str) -> int:
+    """Cheapest first: format/lint, types, tests and the rest, builds, then e2e and image builds."""
+    if re.search(r"(?i)\b(e2e|docker build)\b", cmd):
+        return 4
+    if re.search(r"(?i)\bbuild\b", cmd):
+        return 3
+    if re.search(r"(?i)\b(type-?check|pyright|mypy|tsc)\b", cmd):
+        return 1
+    if re.search(r"(?i)\b(fmt|format|lint|vet|gofmt|clippy|actionlint|config -q)\b", cmd):
+        return 0
+    return 2
+
+
+def missing_tools(root: str, cmd: str) -> list[str]:
+    """Programs a command line starts (its segments and $(...) substitutions) that are not available
+    here. Missing means the check cannot run here: unsupported, never a pass and never a failure."""
+    out = []
+    for seg in re.split(r"&&|\|\||[;|]", cmd):
+        try:
+            words = shlex.split(seg)
+        except ValueError:
+            continue
+        while words and re.fullmatch(r"[A-Za-z_]\w*=.*", words[0]):
+            words.pop(0)
+        inner = [m.group(1) for w in words for m in re.finditer(r"\$\(\s*([\w./-]+)", w)]
+        for prog in ([words[0]] if words and words[0] not in ("test", "[", "!") else []) + inner:
+            if "/" in prog:
+                p = Path(root, prog)
+                if not (p.is_file() and os.access(p, os.X_OK)):
+                    out.append(prog)
+            elif not shutil.which(prog):
+                out.append(prog)
+    return list(dict.fromkeys(out))
+
+
+# What an image build depends on beyond the source the language checks already cover.
+DOCKER_INPUTS = re.compile(r"(?:^|/)(?:Dockerfile[^/]*|[^/]*\.dockerfile|\.dockerignore|(?:docker-)?compose[^/]*\.ya?ml|"
+                           r"package(?:-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|pyproject\.toml|uv\.lock|"
+                           r"poetry\.lock|requirements[^/]*\.txt|go\.(?:mod|sum)|Cargo\.(?:toml|lock)|Gemfile(?:\.lock)?)$")
+
+
+def norm_cmd(cmd: str) -> str:
+    return re.sub(r"^(npm|pnpm|yarn) (?:t|test)\b", r"\1 run test", " ".join(cmd.split()))
+
+
+def covered_by(job: dict, local: dict[str, str]) -> str | None:
+    """The local checks that already run every check command of a plain job, or None. Equivalence is
+    the same command line (npm/pnpm/yarn `test` = `run test`) in a job with nothing that could change
+    its meaning; anything less and the job runs under act as well."""
+    if not job["plain"] or not job["all_commands"]:
+        return None
+    hits = [local.get(norm_cmd(c)) for c in job["all_commands"]]
+    return ", ".join(f"`{h}`" for h in dict.fromkeys(hits)) if all(hits) else None
+
+
+PACKAGE_STACKS = {"javascript/typescript", "python", "go", "rust", "make", "repository scripts"}
+NOT_PACKAGE = re.compile(r"(?:^|/)(?:tests?|testdata|fixtures?|__fixtures__|examples?|samples?|docs?|vendor|"
+                         r"third[_-]party|node_modules|\.[^/]*)(?:/|$)")
+MANIFESTS = {"package.json": "javascript/typescript", "pyproject.toml": "python", "go.mod": "go", "Cargo.toml": "rust"}
+
+
+def package_dirs(root: str, changed: list[str] | None) -> list[str]:
+    """Monorepo packages: directories up to two levels down with a manifest of a stack the root does
+    not have itself (a root manifest is taken to drive its workspace), that the change touches."""
+    at_root = {MANIFESTS[f] for f in MANIFESTS if Path(root, f).is_file()}
+    dirs = []
+    for f in zsplit(git(root, "ls-files", "-z", check=False)):
+        d, _, base = f.rpartition("/")
+        if d and d.count("/") < 2 and MANIFESTS.get(base) not in (None, *at_root) and not NOT_PACKAGE.search(d) \
+                and Path(root, d).is_dir() and (changed is None or any(c.startswith(d + "/") for c in changed)):
+            dirs.append(d)
+    return sorted(set(dirs))
+
+
+DECLARATION = ".local-ci.json"
+
+
+def declaration(root: str) -> tuple[dict, list[dict]]:
+    """The repository's own word on its checks, and notes for the plan. `.local-ci.json` is read as
+    committed at the merge base with the default branch - reviewed and merged - never from the change
+    being validated, so a change cannot loosen its own checks: {"checks": [commands to add],
+    "exclude": {discovered command: why it is not a check of this repository}}. Invalid: ignored."""
+    base = default_branch(root)
+    mb = git_s(root, "merge-base", "HEAD", base, check=False) if base else ""
+    text = git(root, "show", f"{mb}:{DECLARATION}", check=False).decode(errors="replace") if mb else ""
+    here = read_text(Path(root, DECLARATION))
+    notes = []
+    if here != text:
+        notes.append({"name": DECLARATION, "reason": (
+            "no base branch to read a reviewed version from; ignored" if not mb else
+            "added by this change; it applies once merged" if not text else
+            "changed by this change; the base branch's version applies, this one once merged")})
+    if not text:
+        return {}, notes
+    try:
+        d = json.loads(text)
+        ok = (isinstance(d, dict) and set(d) <= {"checks", "exclude"}
+              and isinstance(d.get("checks", []), list) and all(isinstance(c, str) and c.strip() for c in d.get("checks", []))
+              and isinstance(d.get("exclude", {}), dict)
+              and all(isinstance(k, str) and isinstance(v, str) and v.strip() for k, v in d.get("exclude", {}).items()))
+    except ValueError:
+        ok = False
+    if not ok:
+        notes.append({"name": DECLARATION, "reason": "the base branch's version is not {\"checks\": [commands], "
+                                                     "\"exclude\": {command: reason}}; ignored"})
+        return {}, notes
+    return d, notes
+
+
+def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tuple[dict, dict, str]], bool]:
+    """The validation plan for the working tree: every check the repository defines and every affected
+    workflow job, each one required (runs here and must pass), unsupported (cannot run here, with
+    why), skipped (not relevant to this change, or covered, with why) or remote-only (unsafe to run
+    locally). Derived, never chosen: the same repository, changeset and machine give the same plan.
+    Returns (plan, the (workflow, job, event) triples to run under act, whether act restricts options)."""
+    base, changed = changed_files(root)
+    required: list[dict] = []
+    unsupported: list[dict] = []
+    remote: list[dict] = []
+    local: dict[str, str] = {}
+    declared, skipped = declaration(root)
+    items = list(dict.fromkeys((c, d) for d in ["."] + package_dirs(root, changed)
+                               for s in discover_checks(Path(root, d)) if d == "." or s["stack"] in PACKAGE_STACKS
+                               for c in s["commands"]))
+    excluded = declared.get("exclude", {})
+    skipped += [{"name": c, "reason": f"excluded by {DECLARATION} on the base branch: {excluded[c]}"}
+                for c, d in items if d == "." and c in excluded]
+    items = [(c, d) for c, d in items if not (d == "." and c in excluded)]
+    items += [(c, ".") for c in declared.get("checks", []) if (c, ".") not in items]
+    for c, d in sorted(items, key=lambda x: cost_rank(x[0])):
+        lbl = label({"name": c, "cwd": d})
+        miss = missing_tools(os.path.join(root, d), c)
+        if miss:
+            unsupported.append({"name": lbl, "reason": "not installed here: " + ", ".join(miss)})
+            continue
+        if c.startswith("docker build"):
+            if changed is not None and not any(DOCKER_INPUTS.search(f) for f in changed):
+                skipped.append({"name": c, "reason": "no Dockerfile, compose file or dependency manifest changed"})
+                continue
+            problem, _ = docker_status()
+            if problem:
+                unsupported.append({"name": c, "reason": problem})
+                continue
+        required.append({"key": key({"name": c, "cmd": c, "cwd": d}), "label": lbl, "kind": "cmd",
+                         "cmd": c, "cwd": d})
+        if d == ".":
+            local[norm_cmd(c)] = c
+
+    candidates = []
+    for wf in discover_workflows(Path(root)):
+        if wf["event"] is None:
+            (remote if set(wf["triggers"]) & UNSAFE_EVENTS else skipped).append({"name": wf["file"],
+                                                                                "reason": wf["skip"]})
+            continue
+        if not wf["relevant"]:
+            skipped.append({"name": wf["file"], "reason": wf["relevance"]})
+            continue
+        if wf["event"] == "workflow_dispatch":
+            skipped.append({"name": wf["file"], "reason": "only started by hand (workflow_dispatch), never by a push "
+                                                          "or pull request"})
+            continue
+        for job in wf["jobs"]:
+            name = f"act:{wf['file']}:{job['id']}"
+            if job["status"] == "unsafe":
+                remote.append({"name": name, "reason": "; ".join(job["reasons"])})
+            elif job["status"] == "unsupported":
+                unsupported.append({"name": name, "reason": "; ".join(job["reasons"])})
+            elif cover := covered_by(job, local):
+                skipped.append({"name": name, "reason": f"runs the same command as the local check {cover}"})
+            else:
+                candidates.append((wf, job))
+
+    act_info: dict = {}
+    restrict = False
+    selected = []
+    if candidates:
+        problems, info = act_preflight()
+        refusal = None if problems else act_refusal(root)
+        restrict = not problems and not refusal and act_supports(shutil.which("act") or "act",
+                                                                 "--container-options-policy")
+        act_info = {"problems": problems, "refusal": refusal, **info}
+        for wf, job in candidates:
+            name = f"act:{wf['file']}:{job['id']}"
+            closure = needs_closure(wf, job)
+            if problems:
+                why = "; ".join(problems)
+            elif refusal:
+                why = "local-ci will not start act here: " + refusal
+            elif any(j["token"] for j in closure):
+                why = "uses GITHUB_TOKEN, which local runs never get"
+            elif not docker_socket and any(j["docker_inside"] for j in closure):
+                why = ("uses Docker inside the job; the Docker socket is never mounted automatically (it gives the "
+                       "job root on this machine: `--docker-socket` only when the user says so)")
+            elif not restrict and any(j["mounts"] for j in closure):
+                why = "sets container volumes/options and this act cannot restrict them"
+            else:
+                required.append({"key": key({"name": name, "cmd": f"event={wf['event']}"}), "label": name,
+                                 "kind": "act", "event": wf["event"]})
+                selected.append((wf, job, wf["event"]))
+                unsupported += [{"name": f"{name} (macOS/Windows matrix legs)", "reason": lim}
+                                for lim in job["limits"] if "macOS/Windows" in lim]
+                continue
+            unsupported.append({"name": name, "reason": why})
+    plan = {"base": base, "changed": None if changed is None else len(changed), "required": required,
+            "unsupported": unsupported, "skipped": skipped, "remote_only": remote, "act": act_info}
+    return plan, selected, restrict
+
+
+def print_plan(plan: dict, fp: str) -> None:
+    changed = "unknown" if plan["changed"] is None else f"{plan['changed']} changed file(s)"
+    print(f"\nValidation plan for tree {fp[:12]} ({changed} vs {plan['base'] or 'no base branch'}); "
+          "`local-ci auto` runs it:")
+    print("  required (must pass before publishing):")
+    for r in plan["required"] or [{"label": "none found - record the check the repository documents with "
+                                            "`local-ci run -- <cmd>`"}]:
+        print(f"    {r['label']}")
+    for title, rows in (("unsupported here (reported, never a pass; remote CI checks them)", plan["unsupported"]),
+                        ("skipped", plan["skipped"]),
+                        ("remote only (never run locally)", plan["remote_only"])):
+        if rows:
+            print(f"  {title}:")
+            for r in rows:
+                print(f"    {r['name']} - {r['reason']}")
+
+
+def cmd_auto(args, root: str) -> int:
+    fp, conflicted = worktree_fingerprint(root)
+    if conflicted:
+        print(f"local-ci auto: unmerged paths ({', '.join(conflicted[:5])}); resolve them first", file=sys.stderr)
+        return EXIT_FAIL
+    images = runner_images(args.platform)
+    if images is None:
+        return EXIT_USAGE
+    plan, selected, restrict = build_plan(root, docker_socket=args.docker_socket)
+    print(f"local-ci auto - {root}")
+    print_plan(plan, fp)
+    if args.plan_only:
+        return EXIT_OK
+    record(root, fp, "plan", "plan", "plan", **plan)
+
+    print("\nRunning the repository's checks, cheapest first:")
+    failed = []
+    for req in (r for r in plan["required"] if r["kind"] == "cmd"):
+        if run_check(root, fp, req["cmd"], [req["cmd"]], req.get("cwd", ".")):
+            failed.append(req["label"])
+            if worktree_fingerprint(root)[0] != fp:
+                break  # it modified the tree: every later result would describe other content
+    if selected:
+        if failed and not args.keep_going:
+            print(f"\nact: {len(selected)} workflow job(s) deferred until the checks above pass "
+                  "(--keep-going runs them anyway)")
+        else:
+            print(f"\nRunning {len(selected)} GitHub Actions job(s) locally with act "
+                  f"(act {plan['act'].get('act')}, docker {plan['act'].get('docker')}):")
+            run_act_jobs(root, fp, selected, images, native_arch=args.native_arch,
+                         docker_socket=args.docker_socket, restrict=restrict, timeout=args.timeout, force=False)
+
+    print()
+    if worktree_fingerprint(root)[0] != fp:
+        print("local-ci auto: NOT VALIDATED - a check modified the tree, so its results describe the content before "
+              "that change. Inspect the change (`git diff`), keep or revert it, then run `local-ci auto` again.")
+        return EXIT_FAIL
+    v = verdict(read_records(root), fp)
+    for line in describe(v, "local-ci auto: working tree"):
+        print(line)
+    if v["ok"]:
+        print("Commit exactly this content and push once. Local evidence is partial: remote CI is still the final "
+              "check, and the only check for every job listed unsupported or remote only.")
+        return EXIT_OK
+    print("Fix the cause of each failure (logs above), then run `local-ci auto` again: checks that already passed "
+          "for unchanged content are not rerun. Never weaken a check to get a pass.")
+    return EXIT_FAIL
+
+
+# ---------------------------------------------------------------- Claude Code session hooks
+
+def session_file(session_id: str, root: str) -> Path:
+    """One file per session and repository; root "" is the session's own index."""
+    sid = re.sub(r"[^\w.-]", "_", session_id)[:80] or "unknown"
+    return state_dir() / "sessions" / (f"{sid}-{ledger_path(root).stem}.json" if root else f"{sid}.json")
+
+
+def published(root: str, fp: str) -> bool:
+    """The working tree is exactly HEAD's tree and HEAD is already on a remote branch: nothing to publish."""
+    return (fp == rev_fingerprint(root, "HEAD")
+            and bool(git_s(root, "for-each-ref", "--count=1", "--contains", "HEAD", "refs/remotes", check=False)))
+
+
+MAX_HOLDS = 3  # stops held in a row while the agent is still answering the same user turn
+
+
+def cmd_session(args) -> int:
+    """Claude Code hooks. start (SessionStart) and touch (PreToolUse on the file tools, before the
+    first edit of each repository) record the content a repository had before the session changed it.
+    stop (Stop) asks for `local-ci auto` when a repository the session changed has content that is not
+    validated and not already published (a repository first seen at a stop only gets a baseline): once per content state, and at most MAX_HOLDS times in a row within one user turn, so
+    content that changes on every run cannot hold stops forever. Never runs a check itself."""
+    try:
+        d = json.load(sys.stdin)
+    except ValueError:
+        return EXIT_OK
+    if str(os.environ.get("LOCAL_CI_AUTO", "")).lower() in ("0", "off", "false", "no") or not isinstance(d, dict):
+        return EXIT_OK
+    sid = str(d.get("session_id") or "")
+    cwd = str(d.get("cwd") or os.getcwd())
+    index_file = session_file(sid, "")  # the session's own record: repositories seen, holds in a row
+    try:
+        index = json.loads(index_file.read_text())
+    except (OSError, ValueError):
+        index = {"repos": [], "holds": 0}
+
+    def save(path: Path, data: dict) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data))
+        os.replace(tmp, path)
+
+    def load(root: str) -> dict | None:
+        try:
+            return json.loads(session_file(sid, root).read_text())
+        except (OSError, ValueError):
+            return None
+
+    def baseline(root: str, data: dict | None = None) -> None:
+        if load(root) is None:
+            if data is None:
+                fp, _ = worktree_fingerprint(root)
+                data = {"fp": fp, "head": git_s(root, "rev-parse", "--verify", "-q", "HEAD", check=False), "seen": {}}
+            save(session_file(sid, root), data)
+            if root not in index["repos"]:
+                index["repos"].append(root)
+                save(index_file, index)
+
+    if args.action == "touch":
+        tool_input = d.get("tool_input") if isinstance(d.get("tool_input"), dict) else {}
+        target = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
+        if target:
+            target = os.path.dirname(os.path.join(cwd, os.path.expanduser(target)))
+            while target and not os.path.isdir(target):  # a file in a directory not created yet
+                target = os.path.dirname(target)
+            root = toplevel(target) if target else None
+            if root:
+                baseline(root)
+        return EXIT_OK
+    here = toplevel(cwd)
+    if args.action == "start":
+        if here:
+            baseline(here)
+        return EXIT_OK
+
+    pending, noted = [], []
+    for root in dict.fromkeys(([here] if here else []) + [r for r in index["repos"] if os.path.isdir(r)]):
+        try:
+            state = load(root)
+            if state is None:  # first seen at a stop (the session moved here): a baseline, never a hold
+                baseline(root)
+                continue
+            fp, conflicted = worktree_fingerprint(root)
+            head = git_s(root, "rev-parse", "--verify", "-q", "HEAD", check=False)
+            if conflicted or (fp == state["fp"] and head == state["head"]) or published(root, fp):
+                continue
+            v = verdict(read_records(root), fp)
+        except (OSError, RuntimeError, ValueError, KeyError):
+            continue  # one unreadable repository must not switch the hook off for the others
+        if v["ok"]:
+            continue
+        times = state["seen"].get(fp, 0)
+        state["seen"][fp] = times + 1
+        save(session_file(sid, root), state)
+        if times == 0:
+            pending.append(f"{root} ({v['why']})")
+        elif times == 1:
+            noted.append(f"{root} ({v['why']})")
+    holds = index.get("holds", 0) if d.get("stop_hook_active") else 0
+    if pending and holds < MAX_HOLDS:
+        index["holds"] = holds + 1
+        save(index_file, index)
+        lc = shlex.quote(self_path())
+        print(json.dumps({"decision": "block", "reason": (
+            "Local-first CI (automatic): this session changed content that has no complete local validation: "
+            + "; ".join(pending) + f". Before finishing, run `{lc} auto` in each of those repositories (Bash; act jobs "
+            "take minutes, so give it a 600000 ms timeout or run it in the background). It derives the validation "
+            "plan itself - the repository's own checks, cheapest first, then the affected GitHub Actions jobs under "
+            "act - and runs whatever has not passed for this exact content. If a check fails, fix the cause and run "
+            "it again until it exits 0; never weaken a check. Then report what passed, what is unsupported locally "
+            "and why, and that remote CI is still the final check. If this work is deliberately not meant to be "
+            "validated yet (the user said so, or it is a throwaway experiment), say that in one line instead.")}))
+    elif pending or noted:
+        print(json.dumps({"systemMessage": (
+            "local-ci: changes not validated locally: " + "; ".join(pending + noted) + ". Pushes and PRs from this "
+            "session stay blocked until `local-ci auto` passes for the content being published.")}))
     return EXIT_OK
 
 
@@ -1227,18 +1739,25 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("unsupported")
     s.add_argument("--name", required=True)
     s.add_argument("--reason", required=True)
-    s = sub.add_parser("act")
+    act_opts = argparse.ArgumentParser(add_help=False)  # how act runs, for `act` and `auto` alike
+    act_opts.add_argument("--native-arch", action="store_true", help="do not force linux/amd64 on ARM hosts")
+    act_opts.add_argument("--platform", action="append", metavar="LABEL=IMAGE",
+                          help="runner image for a runs-on label (repeatable); actrc files are never read")
+    act_opts.add_argument("--docker-socket", action="store_true",
+                          help="mount the Docker socket into job containers (trusted workflows only)")
+    act_opts.add_argument("--timeout", type=int, default=1800, help="per act job, seconds")
+    s = sub.add_parser("act", parents=[act_opts])
     s.add_argument("--workflow")
     s.add_argument("--job", action="append")
     s.add_argument("--event")
     s.add_argument("--list", action="store_true")
     s.add_argument("--force", action="store_true", help="rerun jobs that already passed for this content")
-    s.add_argument("--native-arch", action="store_true", help="do not force linux/amd64 on ARM hosts")
-    s.add_argument("--platform", action="append", metavar="LABEL=IMAGE",
-                   help="runner image for a runs-on label (repeatable); actrc files are never read")
-    s.add_argument("--docker-socket", action="store_true",
-                   help="mount the Docker socket into job containers (trusted workflows only)")
-    s.add_argument("--timeout", type=int, default=1800)
+    s = sub.add_parser("auto", parents=[act_opts])
+    s.add_argument("--plan-only", action="store_true", help="print the validation plan; run and record nothing")
+    s.add_argument("--keep-going", action="store_true", help="run the act jobs even after a local check failed")
+    s = sub.add_parser("session")
+    s.add_argument("action", choices=["start", "touch", "stop"],
+                   help="Claude Code SessionStart / PreToolUse(file tools) / Stop hook (payload on stdin)")
     s = sub.add_parser("status")
     s.add_argument("--json", action="store_true")
     s = sub.add_parser("gate")
@@ -1249,8 +1768,10 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("hook")
     s.add_argument("action", choices=["install", "print"])
     args = p.parse_args(argv)
+    if args.command == "session":
+        return cmd_session(args)
     root = need_repo()
-    return {"plan": cmd_plan, "run": cmd_run, "unsupported": cmd_unsupported, "act": cmd_act,
+    return {"plan": cmd_plan, "run": cmd_run, "unsupported": cmd_unsupported, "act": cmd_act, "auto": cmd_auto,
             "status": cmd_status, "gate": cmd_gate, "pre-push": cmd_pre_push, "hook": cmd_hook}[args.command](args, root)
 
 

@@ -190,7 +190,8 @@ fi
 
 printf '\nLocal-first CI gate holds its regression scenarios:\n'
 # Throwaway repositories with stubbed act, docker and gh, pushes only to a local
-# bare repository: evidence, staleness, act classification, hooks, installer.
+# bare repository: evidence, staleness, act classification, the automatic plan and
+# Stop trigger, hooks, installer.
 if out=$(python3 "$REPO/scripts/test_local_ci.py" 2>&1); then
   ok "${out##*$'\n'}"
 else

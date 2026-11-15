@@ -41,6 +41,16 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/local-ci-auto.sh touch",
+            "timeout": 30
+          }
+        ]
+      },
+      {
         "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {
@@ -96,6 +106,15 @@
     ],
     "SessionStart": [
       {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/local-ci-auto.sh start",
+            "timeout": 30
+          }
+        ]
+      },
+      {
         "matcher": "compact|clear",
         "hooks": [
           {
@@ -113,6 +132,15 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/ponytail-guard.sh clear -q",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/local-ci-auto.sh stop",
+            "timeout": 60
           }
         ]
       }
