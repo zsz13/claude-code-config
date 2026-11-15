@@ -32,6 +32,7 @@ new .git/hooks/pre-push and only when no pre-push hook and no core.hooksPath exi
 from __future__ import annotations
 
 import argparse
+import bisect
 import fcntl
 import hashlib
 import json
@@ -229,7 +230,10 @@ def summarize(records: list[dict], fp: str) -> dict[str, tuple[dict, bool]]:
     for r in sorted((r for r in records if r.get("fp") == fp and r.get("kind") != "plan"), key=lambda r: r.get("ts", 0)):
         prev, blocked = out.get(key(r), (r, False))
         if r["status"] == "unsupported" and prev is not r and prev["status"] != "unsupported":
-            continue
+            # reclassify(): the same log, read by the current classifier, replaces that one record
+            if not (r.get("supersedes") == prev.get("ts") and r.get("log") and r.get("log") == prev.get("log")):
+                continue
+            blocked = False
         if r["status"] == "pass":
             blocked = False
         elif r["status"] in BLOCKING:
@@ -440,6 +444,15 @@ UNSAFE_ACTION = re.compile(
     r"peaceiris/actions-gh-pages|jamesives/github-pages-deploy-action|changesets/action|goreleaser/|"
     r"hashicorp/setup-terraform.*apply|cloudflare/wrangler-action|superfly/)")
 DOCKER_STEP = re.compile(r"(?i)\bdocker(?:\s+(?:build|run|compose|buildx)|-compose)\b|^docker://|docker/setup-buildx")
+# Docker started as a command anywhere in a Makefile recipe or a repository script a step runs. Broad on
+# purpose (a comment or message naming the command counts): a miss runs a job that needs the engine.
+DOCKER_WORD = re.compile(r"(?:^|[\s;&|(`'\"@=:{-])(?:docker(?:-compose)?|podman)(?=[\s'\"`;)}]|$)")
+INTERPRETERS = {"sh", "bash", "zsh", "dash", "python", "python3", "node", "ruby", "perl", "exec", "source", ".",
+                "env", "sudo", "time", "nohup"}
+MAKE_CALL = re.compile(r"(?:^|[\s;&|(@`])(?:g?make|\$\(MAKE\)|\$\{MAKE\})((?:[ \t]+[^\s;&|)`]+)*)")
+MAKE_VAR = re.compile(r"^(?:override\s+|export\s+)?([A-Za-z_][\w.-]*)\s*(?::{1,3}|\?|\+|!)?=\s*(.*)$")
+MAKE_RULE = re.compile(r"^([^\s:#=][^:=]*?)\s*::?(?!=)\s*(.*)$")
+SCRIPT_EXT = {".sh", ".bash", ".py", ".js", ".mjs", ".cjs", ".ts", ".rb", ".pl"}
 WRITE_PERM = re.compile(r"(?i)\b(contents|packages|deployments|id-token|pages|releases|actions|statuses)\s*:\s*write\b|write-all")
 
 
@@ -506,6 +519,122 @@ def step_runs(lines: list[str], lo: int, hi: int) -> list[str]:
     return out
 
 
+def make_expand(s: str, variables: dict[str, str]) -> str:
+    """$(VAR) and ${VAR} replaced by the Makefile's own definitions; $(MAKE) is kept, to be followed."""
+    for _ in range(5):
+        new = re.sub(r"\$[({]([A-Za-z_][\w.-]*)[)}]",
+                     lambda m: m.group(0) if m.group(1) == "MAKE" else variables.get(m.group(1), m.group(0)), s)
+        if new == s:
+            break
+        s = new
+    return s
+
+
+_MAKEFILES: dict[str, tuple] = {}
+
+
+def read_makefile(root: Path) -> tuple[dict[str, str], dict[str, tuple[list[str], list[str]]], str | None]:
+    """(variables, target -> (prerequisites, recipe lines), default goal) of the Makefile at root."""
+    if str(root) in _MAKEFILES:
+        return _MAKEFILES[str(root)]
+    path = next((root / n for n in ("GNUmakefile", "makefile", "Makefile") if (root / n).is_file()), None)
+    text = re.sub(r"\\\n", " ", read_text(path)) if path else ""
+    variables: dict[str, str] = {}
+    rules: dict[str, tuple[list[str], list[str]]] = {}
+    goal, current = None, []
+    for line in text.splitlines():
+        if line.startswith("\t"):
+            for t in current:
+                rules[t][1].append(line.strip())
+            continue
+        s = strip_comment(line)
+        if not s.strip():
+            continue
+        if m := MAKE_VAR.match(s):
+            variables[m.group(1)] = m.group(2)
+            current = []
+        elif m := MAKE_RULE.match(make_expand(s, variables)):
+            deps, _, inline = m.group(2).partition(";")
+            current = m.group(1).split()
+            for t in current:
+                rules.setdefault(t, ([], []))[0].extend(p for p in deps.split() if p != "|")
+                if inline.strip():
+                    rules[t][1].append(inline.strip())
+                if goal is None and not t.startswith(".") and "%" not in t:
+                    goal = t
+        else:
+            current = []
+    _MAKEFILES[str(root)] = (variables, rules, goal)
+    return _MAKEFILES[str(root)]
+
+
+def started_programs(line: str) -> list[str]:
+    """The words of a shell line that start a program: the first word of each command (after VAR=x
+    assignments) and the word an interpreter or wrapper runs. Arguments such as `eslint src/x.js` are
+    files read, not programs started, and are not followed."""
+    out = []
+    for seg in re.split(r"&&|\|\||[;|&()`]", line):
+        words = [w.strip("'\"") for w in seg.split()]
+        while words and re.fullmatch(r"[A-Za-z_]\w*=\S*", words[0]):
+            words.pop(0)
+        out += [w for i, w in enumerate(words) if i == 0 or os.path.basename(words[i - 1]) in INTERPRETERS]
+    return out
+
+
+def docker_reach(root: Path, text: str) -> str | None:
+    """How run steps reach Docker without naming it: through a Makefile target (its prerequisites and
+    $(MAKE) calls) or a repository script they start, followed transitively. The chain as text, such as
+    "make deps -> check-tools -> `command -v docker`", or None."""
+    variables, rules, goal = read_makefile(root)
+    seen: set[str] = set()
+
+    def lines_reach(lines: list[str], chain: list[str], depth: int) -> list[str] | None:
+        for raw in lines:
+            line = make_expand(raw, variables)
+            if DOCKER_WORD.search(line):
+                return chain + [f"`{line.strip()[:80]}`"]
+            if depth >= 8:
+                continue
+            for m in MAKE_CALL.finditer(line):
+                words = m.group(1).split()
+                if any(w.startswith(("-C", "-f", "--directory", "--file", "--makefile")) for w in words):
+                    continue  # another Makefile; not followed
+                for t in [w for w in words if not w.startswith("-") and "=" not in w] or [goal or ""]:
+                    hit = target_reach(t, chain + [f"make {t}" if not chain else t], depth + 1)
+                    if hit:
+                        return hit
+            for w in started_programs(line):
+                if not w or w.startswith(("/", "-", "$")) or "/" not in w and Path(w).suffix not in SCRIPT_EXT:
+                    continue
+                try:
+                    p = (root / w).resolve()
+                    if str(p) in seen or not p.is_file() or root.resolve() not in p.parents:
+                        continue
+                except (OSError, ValueError):  # a name too long, a directory it cannot enter
+                    continue
+                seen.add(str(p))
+                body = read_text(p)
+                if p.suffix in SCRIPT_EXT or body.startswith("#!"):
+                    hit = lines_reach(body.splitlines(), chain + [w], depth + 1)
+                    if hit:
+                        return hit
+        return None
+
+    def target_reach(t: str, chain: list[str], depth: int) -> list[str] | None:
+        if not t or t in seen or t not in rules:
+            return None
+        seen.add(t)
+        prereqs, recipe = rules[t]
+        for p in prereqs:
+            hit = target_reach(p, chain + [p], depth + 1)
+            if hit:
+                return hit
+        return lines_reach(recipe, chain, depth)
+
+    hit = lines_reach(text.splitlines(), [], 0)
+    return " -> ".join(hit) if hit else None
+
+
 def parse_workflow(path: Path) -> dict:
     raw = read_text(path)
     lines = [strip_comment(line.replace("\t", "  ")) for line in raw.splitlines()]
@@ -529,7 +658,7 @@ def parse_workflow(path: Path) -> dict:
     wf_shapes = "env" in top or "defaults" in top  # workflow-wide env or default working directory/shell
     if "jobs" in top:
         for job_id, (_v, lo, hi) in children(lines, top["jobs"][1], top["jobs"][2]).items():
-            jobs.append(classify_job(job_id, lines, lo, hi, wf_text, wf_shapes))
+            jobs.append(classify_job(job_id, lines, lo, hi, wf_text, wf_shapes, path.parent.parent.parent))
     inherit_needs(jobs)
     return {"file": path.name, "name": top.get("name", (path.stem,))[0].strip("'\"") or path.stem,
             "triggers": triggers, "jobs": jobs}
@@ -563,7 +692,8 @@ SETUP_ACTION = re.compile(r"(?i)^(?:actions/(?:checkout|cache|setup-[\w-]+)|astr
                           r"oven-sh/setup-bun|dtolnay/rust-toolchain|hashicorp/setup-terraform)@")
 
 
-def classify_job(job_id: str, lines: list[str], lo: int, hi: int, wf_perm: str, wf_shapes: bool = False) -> dict:
+def classify_job(job_id: str, lines: list[str], lo: int, hi: int, wf_perm: str, wf_shapes: bool = False,
+                 root: Path | None = None) -> dict:
     keys = children(lines, lo, hi)
     body = "\n".join(lines[lo:hi])
     name = keys.get("name", (job_id,))[0].strip("'\"") or job_id
@@ -608,10 +738,15 @@ def classify_job(job_id: str, lines: list[str], lo: int, hi: int, wf_perm: str, 
         unsupported.append("needs secrets that are never provided locally: " + (", ".join(secrets) or "inherit"))
     if re.search(r"\$\{\{\s*(?:secrets\.GITHUB_TOKEN|github\.token)\s*\}\}", body):
         limited.append("uses GITHUB_TOKEN, which local runs do not get; GitHub API steps will fail")
-    if any(DOCKER_STEP.search(x) for x in runs + uses):
-        limited.append("uses Docker inside the job; needs --docker-socket (trusted workflows only)")
+    direct = any(DOCKER_STEP.search(x) for x in runs + uses)
+    via = None if direct or root is None else docker_reach(root, "\n".join(runs))
+    if direct or via:
+        limited.append("uses Docker inside the job" + (f" (through {via})" if via else "")
+                       + "; needs --docker-socket on an isolated daemon (trusted workflows only)")
     if "services" in keys:
-        limited.append("starts service containers on your Docker engine")
+        unsupported.append("starts service containers, which GitHub's runner reaches at localhost on the host "
+                           "network; local-ci runs jobs on an isolated network, so the developer's published "
+                           "services stay out of reach, and so would these")
     if mounts:
         limited.append("sets container volumes/options; act restricts them, or the job is skipped on an act too old to")
     status = "unsafe" if unsafe else "unsupported" if unsupported else "runnable"
@@ -625,8 +760,8 @@ def classify_job(job_id: str, lines: list[str], lo: int, hi: int, wf_perm: str, 
              and all(SETUP_ACTION.search(u) for u in uses))
     return {"id": job_id, "name": name, "runs_on": runs_on, "status": status, "own_status": status,
             "reasons": unsafe or unsupported, "limits": limited, "commands": checks[:6], "all_commands": checks,
-            "needs": needs, "mounts": mounts, "plain": plain, "matrix": "strategy" in keys,
-            "docker_inside": any(DOCKER_STEP.search(x) for x in runs + uses),
+            "needs": needs, "mounts": mounts, "plain": plain, "matrix": "strategy" in keys, "container": "container" in keys,
+            "docker_inside": bool(direct or via), "docker_via": via,
             "token": bool(re.search(r"\$\{\{\s*(?:secrets\.GITHUB_TOKEN|github\.token)\s*\}\}", body))}
 
 
@@ -731,9 +866,25 @@ INFRA = re.compile(
 HINT = re.compile(r"(?i)(Unable to clone|workflow is not valid|unknown event|Bad credentials|is not supported|"
                   r"does not provide the specified platform|platform does not match)")
 STEP_FAIL = re.compile(r"❌\s+Failure - (.*)")
+STEP_RUN = re.compile(r"⭐\s+Run ")
+LINE_JOB = re.compile(r"^\[([^\]]*)\]")
+# A failed step whose own output shows the runner, not the code, could not do it: act could not start
+# the step's process (its own `docker exec cmd=[X ...]` of the step, then X not found), or the step
+# reached for the Docker socket the job is not given. Only when every failed step is one of these, and
+# no other failure line sits in that step's output, is the job unsupported.
+NOT_FOUND = re.compile(r'OCI runtime exec failed:.*?exec: "([^"]+)": executable file not found')
+NO_SOCKET = re.compile(r"/var/run/docker\.sock: connect: no such file or directory|"
+                       r"Cannot connect to the Docker daemon at unix:///var/run/docker\.sock")
+FAILURE_MARK = re.compile(r"(?i)\b(?:fail(?:s|ed|ure|ures|ing)?|errors?|assert\w*|traceback|panic\w*|exception|"
+                          r"not ok)\b|[✗✘✖✕]")
+PROPAGATED = re.compile(r"^make(?:\[\d+\])?: \*\*\* .*\bError \d+$|^Error: Process completed with exit code \d+")
+CAPABILITY_LEAD = "missing runner capability, not a code failure - "
+CLASSIFIER = 2  # act results recorded before 2 did not tell missing runner capabilities from failures
 JOB_OK = re.compile(r"^\[([^\]]*)\].*Job succeeded", re.M)
 SECRETISH = re.compile(r"(?:^|/)(?:\.env(?:\..+)?|\.secrets?|\.vars|\.netrc|\.npmrc|\.pypirc|credentials[^/]*|"
                        r"id_(?:rsa|dsa|ecdsa|ed25519)[^/]*|[^/]*\.(?:pem|key|p12|pfx|kdbx))$")
+HOST_ALIASES = ("host.docker.internal", "gateway.docker.internal")
+ACT_OWN = re.compile(r"^act-toolcache$|^act-.+-[0-9a-f]{16,}(?:-env)?$")  # act's cache volume, its job containers
 DEFAULT_IMAGES = (("ubuntu-latest", "catthehacker/ubuntu:act-latest"),
                   ("ubuntu-24.04", "catthehacker/ubuntu:act-24.04"),
                   ("ubuntu-22.04", "catthehacker/ubuntu:act-22.04"))
@@ -834,7 +985,7 @@ def event_payload(root: str, event: str) -> dict:
 
 
 def act_command(act: str, wf_rel: str, job: str, event: str, payload: str, empty: str, images: dict[str, str],
-                native_arch: bool, docker_socket: bool, restrict_options: bool) -> list[str]:
+                native_arch: bool, docker_socket: bool, restrict_options: bool, network: str) -> list[str]:
     # An empty GITHUB_TOKEN: given none, act fetches the user's own from `gh auth token`; given a dummy,
     # it sends the dummy when cloning public actions and GitHub rejects it. Empty clones anonymously.
     cmd = [act, event, "-W", wf_rel, "-j", job, "-e", payload,
@@ -844,6 +995,10 @@ def act_command(act: str, wf_rel: str, job: str, event: str, payload: str, empty
         cmd += ["--container-daemon-socket", "-"]
     if restrict_options:
         cmd += ["--container-options-policy", "restrict"]
+    # Not act's default host network: there `localhost` is the engine's host, where the developer's
+    # published ports (a dev database) answer. On a bridge network of its own, and with Docker Desktop's
+    # host names pointed at the container itself, a job's default addresses reach none of them.
+    cmd += ["--network", network, "--container-options", " ".join(f"--add-host={h}:127.0.0.1" for h in HOST_ALIASES)]
     for label, image in images.items():
         cmd += ["-P", f"{label}={image}"]
     if not native_arch and platform.machine().lower() in ("arm64", "aarch64"):
@@ -851,10 +1006,53 @@ def act_command(act: str, wf_rel: str, job: str, event: str, payload: str, empty
     return cmd
 
 
+def failed_steps(log: str) -> list[tuple[str, list[str]]]:
+    """(step, its own lines) for every failed step: the lines of the same job (the `[workflow/job]`
+    prefix, so parallel matrix legs never mix) from its ⭐ Run line to its ❌ Failure line."""
+    lines = log.splitlines()
+    out = []
+    for i, line in enumerate(lines):
+        m = STEP_FAIL.search(line)
+        if not m:
+            continue
+        job = LINE_JOB.match(line)
+        own = []
+        for prev in reversed(lines[:i]):
+            pj = LINE_JOB.match(prev)
+            if job and (not pj or pj.group(1) != job.group(1)):
+                continue
+            if STEP_RUN.search(prev):
+                break
+            own.append(prev)
+        out.append((re.sub(r"\s*\[[^\]]*\]\s*$", "", m.group(1).strip()), own[::-1]))
+    return out
+
+
+def capability_gap(lines: list[str], own_image: bool = False) -> str | None:
+    """Why a failed step is the runner's and not the code's, or None. Every failure-looking line of the
+    step's own output, annotations (`::error`) included, must be the capability signature itself or make
+    passing its exit on. In a job that names its own `container:` image, a program missing there is
+    the workflow's doing, as it would be on GitHub: not a runner gap."""
+    output = [x.split("|", 1)[1].strip() if re.match(r"^\[[^\]]*\]\s+\|", x) else x for x in lines
+              if re.match(r"^\[[^\]]*\]\s+\|", x) or "::error" in x or "❗" in x]
+    why = None
+    for text in output:
+        nf, ns = NOT_FOUND.search(text), NO_SOCKET.search(text)
+        if nf and not own_image and any(re.search(r"docker exec cmd=\[" + re.escape(nf.group(1)) + r"[ \]]", x)
+                                        for x in lines):
+            why = why or f"the act runner image could not start `{nf.group(1)}` for this step (GitHub's runner has it)"
+        elif ns:
+            why = why or "the step needs the Docker engine, which the job is not given (no socket without isolation)"
+        elif FAILURE_MARK.search(text) and not PROPAGATED.search(text):
+            return None
+    return why
+
+
 def classify_act(rc: int, log: str, job: dict) -> tuple[str, str]:
-    """pass, fail, or unsupported. A pass needs the success line of this job, not a dependency's. An
-    environment problem counts as unsupported only when no step failed: a real step failure is never
-    hidden behind an environmental-looking line."""
+    """pass, fail, or unsupported. A pass needs the success line of this job, not a dependency's. A
+    job is unsupported when act or the engine failed before any step did, or when every failed step's
+    own output shows a missing runner capability (capability_gap). Any other failed step makes it a fail,
+    whatever environmental-looking line sits next to it."""
     def line_of(rx: re.Pattern) -> str:
         m = rx.search(log)
         return log[log.rfind("\n", 0, m.start()) + 1:].split("\n", 1)[0].strip()[:200] if m else ""
@@ -871,6 +1069,9 @@ def classify_act(rc: int, log: str, job: dict) -> tuple[str, str]:
         if ours:
             return "pass", "job succeeded under act"
         return "unsupported", "act exited 0 but this job did not run (skipped by `if:`?)" + (f" ({infra})" if infra else "")
+    gaps = [(name, capability_gap(block, bool(job.get("container")))) for name, block in failed_steps(log)]
+    if gaps and all(why for _, why in gaps):
+        return "unsupported", CAPABILITY_LEAD + "; ".join(f"{n}: {w}" for n, w in dict.fromkeys(gaps))
     if infra and not steps:
         why = " - a private or misspelled action" if "authentication required" in infra else ""
         return "unsupported", f"environment, not the code{why}: {infra}"
@@ -879,6 +1080,74 @@ def classify_act(rc: int, log: str, job: dict) -> tuple[str, str]:
     if "platform" in seen:
         hint += "; on an ARM host, `--native-arch` avoids the amd64 image build"
     return "fail", ("failed steps: " + "; ".join(dict.fromkeys(steps)) if steps else f"act exited {rc}") + hint
+
+
+def reclassify(root: str, fp: str) -> list[str]:
+    """Act failures recorded for content fp before CLASSIFIER, read again from their own logs. Only a
+    log in which every failed step shows a missing runner capability changes, and only to unsupported,
+    in a new record that names the record and log it supersedes. Never a pass; a failure recorded by
+    the current classifier, a timeout, or a log that is gone stays a failure."""
+    notes = []
+    for rec, blocked in summarize(read_records(root), fp).values():
+        if not (blocked and rec.get("kind") == "act" and rec.get("status") == "fail" and rec.get("log")
+                and rec.get("classifier", 1) < CLASSIFIER and isinstance(rec.get("exit"), int)
+                and rec["exit"] not in (0, 124)):
+            continue
+        job_id = rec["name"].rsplit(":", 1)[-1]
+        status, detail = classify_act(rec["exit"], read_text(Path(rec["log"])), {"id": job_id, "name": job_id})
+        if status != "unsupported" or not detail.startswith(CAPABILITY_LEAD):
+            continue
+        record(root, fp, rec["name"], "act", "unsupported", detail=f"{detail} (reread from the log of the failure "
+               f"recorded before classifier {CLASSIFIER})", exit=rec["exit"], log=rec["log"], cmd=rec.get("cmd", ""),
+               supersedes=rec["ts"], classifier=CLASSIFIER)
+        notes.append(f"{rec['name']}: recorded fail -> unsupported; {detail} (log: {rec['log']})")
+    return notes
+
+
+def daemon_residents() -> list[str] | None:
+    """Containers and volumes on the Docker daemon act would use that act did not create (its cache
+    volume and its hash-named job containers), or None when they cannot be listed. A daemon with none
+    holds no one's data."""
+    out = []
+    for argv in (["docker", "ps", "-a", "--format", "{{.Names}}"], ["docker", "volume", "ls", "--format", "{{.Name}}"]):
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if r.returncode:
+            return None
+        out += [n for n in r.stdout.split() if not ACT_OWN.match(n)]
+    return out
+
+
+def isolation_problem() -> str | None:
+    """Why the daemon act would use is not an isolated one, or None: it must hold nothing act did not create."""
+    residents = daemon_residents()
+    if residents is None:
+        return "the daemon's containers and volumes could not be listed, so it is not known to be isolated"
+    if residents:
+        return (f"the daemon the socket would expose also holds {len(residents)} container(s)/volume(s) act did not "
+                f"create ({', '.join(residents[:4])}{', ...' if len(residents) > 4 else ''}): a job could reuse or "
+                "delete them. Point DOCKER_HOST at an isolated daemon that holds nothing else")
+    return None
+
+
+def docker_refusal(closure: list[dict], docker_socket: bool) -> str | None:
+    """Why a job is not run under act for Docker's sake, or None. The socket is root on the daemon: every
+    container and volume on it. A job that uses Docker (itself or a job it needs) runs only with the
+    socket, which is mounted only when the user asked (--docker-socket), and then for every job, so every
+    job is refused unless the daemon holds nothing act did not create - never the developer's own."""
+    users = [j for j in closure if j.get("docker_inside")]
+    via = next((j["docker_via"] for j in users if j.get("docker_via")), None)
+    what = "uses Docker inside the job" + (f" (through {via})" if via else "")
+    if users and not docker_socket:
+        return (what + "; the Docker socket is never mounted automatically (it gives the job root on this machine "
+                "and every container and volume on the daemon): `--docker-socket` only when the user says so, "
+                "and only on an isolated daemon")
+    problem = isolation_problem() if docker_socket else None
+    if problem:
+        return (what if users else "--docker-socket would give this job the socket too") + "; " + problem
+    return None
 
 
 def needs_closure(wf: dict, job: dict) -> list[dict]:
@@ -929,16 +1198,51 @@ def run_act_jobs(root: str, fp: str, selected: list[tuple[dict, dict, str]], ima
     """Run each (workflow, job, event) under act, record pass/fail/unsupported for content fp, and return
     the statuses. A job that already passed for fp under the same event is not rerun unless forced."""
     act = shutil.which("act") or "act"
-    refusal = act_refusal(root)  # again: a check that ran since the plan may have written such a file
+    # Again, now: a check that ran since the plan may have written such a file, or started containers.
+    refusal = act_refusal(root) or (isolation_problem() if docker_socket else None)
+    network = f"local-ci-{os.getpid()}-{int(time.time())}"
+    if not refusal:
+        try:
+            r = subprocess.run(["docker", "network", "create", "--driver", "bridge", network],
+                               capture_output=True, text=True, timeout=30)
+            if r.returncode:
+                refusal = f"could not create the job network: {(r.stderr or r.stdout).strip()[:200]}"
+        except (OSError, subprocess.TimeoutExpired) as e:
+            refusal = f"could not create the job network: {e}"
     if refusal:
         print(f"  act not started - {refusal}")
         for wf, _job, event in selected:
             record(root, fp, f"act:{wf['file']}:{_job['id']}", "act", "unsupported", detail=refusal, cmd=f"event={event}")
         return ["unsupported"] * len(selected)
-    logdir = state_dir() / "act-logs"
-    logdir.mkdir(parents=True, exist_ok=True)
+    try:
+        logdir = state_dir() / "act-logs"
+        logdir.mkdir(parents=True, exist_ok=True)
+        done = summarize(read_records(root), fp)
+        return _run_jobs(root, fp, selected, images, act, network, logdir, done, native_arch=native_arch,
+                         docker_socket=docker_socket, restrict=restrict, timeout=timeout, force=force)
+    finally:
+        remove_network(network)
+
+
+def remove_network(network: str) -> None:
+    """Remove the run's own network, and first any container still on it: act killed at a timeout never
+    runs its --rm cleanup. Only containers on this run's network, which nothing else uses, are removed."""
+    try:
+        left = subprocess.run(["docker", "ps", "-aq", "--filter", f"network={network}"],
+                              capture_output=True, text=True, timeout=60).stdout.split()
+        if left:
+            subprocess.run(["docker", "rm", "-f", *left], capture_output=True, timeout=120)
+        r = subprocess.run(["docker", "network", "rm", network], capture_output=True, text=True, timeout=60)
+        if r.returncode:
+            print(f"  note: could not remove the job network {network}: {(r.stderr or r.stdout).strip()[:160]}")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"  note: could not remove the job network {network}: {e}")
+
+
+def _run_jobs(root: str, fp: str, selected: list[tuple[dict, dict, str]], images: dict[str, str], act: str,
+              network: str, logdir: Path, done: dict, *, native_arch: bool, docker_socket: bool, restrict: bool,
+              timeout: int, force: bool) -> list[str]:
     statuses = []
-    done = summarize(read_records(root), fp)
     with tempfile.TemporaryDirectory(prefix="local-ci-") as tmp:
         env = act_environment(tmp)
         empty = os.path.join(tmp, "empty")
@@ -953,7 +1257,7 @@ def run_act_jobs(root: str, fp: str, selected: list[tuple[dict, dict, str]], ima
             payload = os.path.join(tmp, f"{event}.json")
             Path(payload).write_text(json.dumps(event_payload(root, event)))
             cmd = act_command(act, f".github/workflows/{wf['file']}", job["id"], event, payload,
-                              empty, images, native_arch, docker_socket, restrict)
+                              empty, images, native_arch, docker_socket, restrict, network)
             log = logdir / f"{time.strftime('%Y%m%d-%H%M%S')}-{wf['file']}-{job['id']}.log"
             t0 = time.time()
             with open(log, "w") as fh:
@@ -969,7 +1273,7 @@ def run_act_jobs(root: str, fp: str, selected: list[tuple[dict, dict, str]], ima
             if worktree_fingerprint(root)[0] != fp:  # act copied whatever the tree was by then
                 status, detail = "changed", f"{detail}; the tree changed while the job ran - rerun"
             record(root, fp, name, "act", status, detail=detail, exit=rc, log=str(log),
-                   duration=round(time.time() - t0, 1), cmd=f"event={event}")
+                   duration=round(time.time() - t0, 1), cmd=f"event={event}", classifier=CLASSIFIER)
             print(f"  {status.upper():11} {name} ({event}, {time.time() - t0:.0f}s) - {detail}")
             print(f"              log: {log}")
             statuses.append(status)
@@ -1000,6 +1304,10 @@ def cmd_act(args, root: str) -> int:
                 continue
             if job["status"] != "runnable":
                 skipped.append((wf["file"], job["id"], f"{job['status']}: {'; '.join(job['reasons'])}"))
+                continue
+            why = docker_refusal(needs_closure(wf, job), args.docker_socket)
+            if why:
+                skipped.append((wf["file"], job["id"], f"unsupported: {why}"))
                 continue
             selected.append((wf, job))
     for f, j, why in skipped:
@@ -1376,6 +1684,14 @@ def norm_cmd(cmd: str) -> str:
     return re.sub(r"^(npm|pnpm|yarn) (?:t|test)\b", r"\1 run test", " ".join(cmd.split()))
 
 
+def direct_note(job: dict, local: dict[str, str]) -> str:
+    """For a job that cannot run here: which of its commands also ran directly as required local checks.
+    Evidence for those commands on this machine, never for the job in GitHub's environment."""
+    hits = [local[norm_cmd(c)] for c in job["all_commands"] if norm_cmd(c) in local]
+    return (f"; its `{'`, `'.join(dict.fromkeys(hits))}` also runs directly as a required local check (evidence "
+            "for that command here, not for this job on GitHub)") if hits else ""
+
+
 def covered_by(job: dict, local: dict[str, str]) -> str | None:
     """The local checks that already run every check command of a plain job, or None. Equivalence is
     the same command line (npm/pnpm/yarn `test` = `run test`) in a job with nothing that could change
@@ -1460,11 +1776,21 @@ def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tu
                 for c, d in items if d == "." and c in excluded]
     items = [(c, d) for c, d in items if not (d == "." and c in excluded)]
     items += [(c, ".") for c in declared.get("checks", []) if (c, ".") not in items]
+    declared_checks = set(declared.get("checks", []))
     for c, d in sorted(items, key=lambda x: cost_rank(x[0])):
         lbl = label({"name": c, "cwd": d})
         miss = missing_tools(os.path.join(root, d), c)
         if miss:
             unsupported.append({"name": lbl, "reason": "not installed here: " + ", ".join(miss)})
+            continue
+        # A discovered command that starts Docker through make or a script runs on the developer's own
+        # daemon, where a pinned compose project reuses (or `down -v` deletes) their containers and volumes.
+        # local-ci's own `docker build` / `compose config -q` are not that; a reviewed declaration decides.
+        via = None if c.startswith("docker ") or (c in declared_checks and d == ".") else docker_reach(Path(root, d), c)
+        if via:
+            unsupported.append({"name": lbl, "reason": f"starts Docker on this machine's daemon (through {via}), where "
+                                f"it could reuse or remove the developer's containers and volumes; run it yourself, "
+                                f"or declare it in {DECLARATION} if it is safe here"})
             continue
         if c.startswith("docker build"):
             if changed is not None and not any(DOCKER_INPUTS.search(f) for f in changed):
@@ -1497,7 +1823,7 @@ def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tu
             if job["status"] == "unsafe":
                 remote.append({"name": name, "reason": "; ".join(job["reasons"])})
             elif job["status"] == "unsupported":
-                unsupported.append({"name": name, "reason": "; ".join(job["reasons"])})
+                unsupported.append({"name": name, "reason": "; ".join(job["reasons"]) + direct_note(job, local)})
             elif cover := covered_by(job, local):
                 skipped.append({"name": name, "reason": f"runs the same command as the local check {cover}"})
             else:
@@ -1521,9 +1847,8 @@ def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tu
                 why = "local-ci will not start act here: " + refusal
             elif any(j["token"] for j in closure):
                 why = "uses GITHUB_TOKEN, which local runs never get"
-            elif not docker_socket and any(j["docker_inside"] for j in closure):
-                why = ("uses Docker inside the job; the Docker socket is never mounted automatically (it gives the "
-                       "job root on this machine: `--docker-socket` only when the user says so)")
+            elif docker_why := docker_refusal(closure, docker_socket):
+                why = docker_why
             elif not restrict and any(j["mounts"] for j in closure):
                 why = "sets container volumes/options and this act cannot restrict them"
             else:
@@ -1533,7 +1858,7 @@ def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tu
                 unsupported += [{"name": f"{name} (macOS/Windows matrix legs)", "reason": lim}
                                 for lim in job["limits"] if "macOS/Windows" in lim]
                 continue
-            unsupported.append({"name": name, "reason": why})
+            unsupported.append({"name": name, "reason": why + direct_note(job, local)})
     plan = {"base": base, "changed": None if changed is None else len(changed), "required": required,
             "unsupported": unsupported, "skipped": skipped, "remote_only": remote, "act": act_info}
     return plan, selected, restrict
@@ -1569,6 +1894,11 @@ def cmd_auto(args, root: str) -> int:
     print_plan(plan, fp)
     if args.plan_only:
         return EXIT_OK
+    notes = reclassify(root, fp)
+    if notes:
+        print("\nRead again from their logs (every failed step lacked a runner capability; never a pass):")
+        for n in notes:
+            print(f"  {n}")
     record(root, fp, "plan", "plan", "plan", **plan)
 
     print("\nRunning the repository's checks, cheapest first:")
@@ -1597,8 +1927,9 @@ def cmd_auto(args, root: str) -> int:
     for line in describe(v, "local-ci auto: working tree"):
         print(line)
     if v["ok"]:
-        print("Commit exactly this content and push once. Local evidence is partial: remote CI is still the final "
-              "check, and the only check for every job listed unsupported or remote only.")
+        print("Commit exactly this content and push once. Local evidence is partial: GitHub Actions is still the "
+              "final check, and the only check for every job listed unsupported or remote only - confirm those "
+              "pass remotely before merging.")
         return EXIT_OK
     print("Fix the cause of each failure (logs above), then run `local-ci auto` again: checks that already passed "
           "for unchanged content are not rerun. Never weaken a check to get a pass.")
@@ -1744,7 +2075,8 @@ def main(argv: list[str] | None = None) -> int:
     act_opts.add_argument("--platform", action="append", metavar="LABEL=IMAGE",
                           help="runner image for a runs-on label (repeatable); actrc files are never read")
     act_opts.add_argument("--docker-socket", action="store_true",
-                          help="mount the Docker socket into job containers (trusted workflows only)")
+                          help="mount the Docker socket into job containers (trusted workflows only); refused unless the "
+                               "daemon holds no container or volume act did not create")
     act_opts.add_argument("--timeout", type=int, default=1800, help="per act job, seconds")
     s = sub.add_parser("act", parents=[act_opts])
     s.add_argument("--workflow")

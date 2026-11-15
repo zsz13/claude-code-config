@@ -213,7 +213,7 @@ feedback, not a boundary. Use the `infrastructure-quality` skill for the workflo
 file itself (permissions, pinned actions). Keep the workflow cheap to run as
 well as correct: one trigger per event (`push` to the default branch plus
 `pull_request`), a `concurrency` group, dependency caching and
-`timeout-minutes`; the full checklist is §7 of the `local-ci` skill.
+`timeout-minutes`; the full checklist is §8 of the `local-ci` skill.
 
 ## 6. Hand-off
 

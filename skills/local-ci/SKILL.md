@@ -110,10 +110,9 @@ equivalence is established: a *plain* job (setup actions and run steps; no
 matrix, container, services, env, working directory or shell) whose every check
 command is the same command line as a required local check (`npm test` and
 `npm run test` are the same). Anything less runs under act too. Jobs that use
-Docker inside the job (`--docker-socket`, trusted workflows only) or a GitHub
-token are reported unsupported rather than run to a certain failure. Matrix
-jobs run every Linux leg (`job-1`, `job-2`, ...); macOS and Windows legs stay
-remote.
+Docker (§4) or a GitHub token are reported unsupported rather than run to a
+certain failure. Matrix jobs run every Linux leg (`job-1`, `job-2`, ...); macOS
+and Windows legs stay remote.
 
 What act runs with, whether `auto` or `local-ci act` starts it:
 
@@ -147,8 +146,9 @@ What act runs with, whether `auto` or `local-ci act` starts it:
   (`--container-daemon-socket -`), and `--container-options-policy restrict`
   where act supports it (0.2.97 does); on an older act, jobs that set container
   volumes or options, and jobs needing them, are skipped. `--docker-socket`
-  mounts the socket (root on the machine) for a workflow that builds images,
-  and only when the user says so.
+  mounts the socket (root on the machine) only when the user says so, and only
+  on an isolated daemon (§4). Jobs run on act's host network: a job that
+  connects to `localhost` ports can reach services the developer published.
 - **Refusals.** act applies an actrc to every run: the repository's `.actrc`
   could switch the isolation off (`--bind`, `-self-hosted`, secrets, host
   paths), and a user-level actrc is read even with a throwaway `HOME` (on macOS
@@ -166,18 +166,77 @@ What act runs with, whether `auto` or `local-ci act` starts it:
 - **Events.** A generated payload for the workflow's own trigger
   (`pull_request` preferred, then `push`), with the current branch and HEAD.
 - **Results.** *pass* when the job succeeded; *fail* on any failed step, with
-  the step names and the log path; *unsupported* only when act or the engine
-  failed (image pull, daemon, unsupported platform) before any step failed. An
+  the step names and the log path; *unsupported* when act or the engine failed
+  (image pull, daemon, unsupported platform) before any step failed, or when
+  every failed step's own output shows a missing runner capability (§4). An
   invalid workflow or an action that cannot be cloned is a *fail*: GitHub would
-  reject it too. A failing step is never relabelled environmental; the summary
-  says when one looks environmental, and the step's command, run directly,
-  tells which. A later unsupported run (Docker stopped) never clears a failure.
+  reject it too. Any other failed step is a *fail*, whatever environmental line
+  sits next to it; the summary says when one looks environmental, and the
+  step's command, run directly, tells which. A later unsupported run (Docker
+  stopped) never clears a failure.
 
 A passing act run is **partial evidence**: those steps passed under act, on an
 approximation of the runner image, without secrets. It does not show that the
 other jobs, the remote images, or the required checks will pass.
 
-## 4. Unsupported checks are reported, not passed
+## 4. Docker-dependent jobs and missing runner capabilities
+
+act is unsafe for a job that uses Docker, whether a step names it or reaches it
+through a Makefile target or a repository script (`make test-all` ->
+`check-tools` -> `docker info`; the plan prints the chain). With the socket,
+the job is root on the daemon and sees every container and volume on it: a
+compose project with a pinned name reuses the developer's containers and
+database volumes. A running daemon does not make that safe. Neither does act's
+default host network, where `localhost` reaches the developer's published
+ports (measured: a job opened a dev database's port), so every job runs on a
+bridge network of its own, created and removed per run, with
+`host.docker.internal` and `gateway.docker.internal` pointed at itself (act
+does not apply that to a job's own `container:`; there, and through Docker
+Desktop's gateway IP, only a workflow addressing the host on purpose reaches
+it). So:
+
+- **Required locally:** the repository's own checks, and every affected job that
+  uses no Docker, no service containers, needs no secret or token, and is not
+  a deploy.
+- **Unsupported locally, never run:** a Docker-using job (and anything that
+  `needs:` it) without `--docker-socket`; a job with `services:` (GitHub reaches
+  them at `localhost` on the host network, which local runs never get); a
+  discovered local check (a Makefile target, a script) that starts Docker on
+  the developer's daemon - run it yourself, or declare it in `.local-ci.json`.
+  `--docker-socket` (the user's call, per run) mounts the socket into every
+  job, so every job is refused unless `DOCKER_HOST` points at an engine that
+  holds no container or volume act did not create; it is checked at planning
+  and again right before act starts. The developer's daemon is refused, naming
+  what it holds; there is no flag that accepts it.
+- **Unsupported at runtime:** a job whose every failed step shows the runner,
+  not the code, could not do it, in that step's own lines: act's own exec of
+  the step could not find its program (`exec: "node": executable file not
+  found` - act drops the image's tool path after a step adds to `PATH`), or the
+  step reached for the Docker socket the job was not given, with no other
+  failure line (a failed test, an assertion, an error) next to it. Anything
+  else, including `node` missing inside the code's own container, is a
+  *fail*.
+- **Direct checks prove** that the same command passed on this machine for this
+  content; the plan names the commands an unsupported job shares with a local
+  check. They do not prove the job: not its runner image, services, Docker
+  engine or secrets.
+- **Only GitHub Actions verifies** every job listed unsupported or remote only.
+  The gate's note and the final report name them; wait for them before
+  merging.
+
+**The push gate allows** publication when this exact content has a recorded
+plan, every required check passed or (an act job) ran and was classified
+unsupported from its own log, and no check is blocked. **It refuses** when any
+check failed or changed the tree and has not passed since, a required check
+never ran, the plan is missing, or the evidence belongs to other content.
+
+Failures recorded before this classifier existed are reread from their own
+logs by `auto`, printed, and superseded only when every failed step shows a
+missing capability; the log, the old record and the new one stay in the
+ledger. A failure recorded by the current classifier is final until the same
+check passes.
+
+## 5. Unsupported checks are reported, not passed
 
 When a required check cannot run here (a credential, hardware, a hosted
 service), record it and say so in the final report:
@@ -197,7 +256,7 @@ requires passed, and nothing failed since*. A pass of some other check never
 stands in for a required one. It cannot see a check the repository documents
 only in prose; §2 says what to do about those.
 
-## 5. Publish exactly what was validated
+## 6. Publish exactly what was validated
 
 ```
 ~/.claude/bin/local-ci status        # working tree and HEAD; HEAD is what a push sends
@@ -216,7 +275,7 @@ reproduce it locally, fix, revalidate, and push once. Rerun a remote job
 (`gh run rerun --failed`) only for a failure shown to be infrastructure, and
 say so. Never push again just to see whether it passes.
 
-## 6. What is enforced, and what is not
+## 7. What is enforced, and what is not
 
 | Mechanism | Covers | Does not cover |
 |---|---|---|
@@ -236,7 +295,7 @@ human's call. A human who wants to publish unvalidated work runs the command
 themselves; an agent never bypasses the gate, and never uses `--no-verify`
 (hook-enforced).
 
-## 7. Cutting remote CI minutes (repository changes, proposed not applied)
+## 8. Cutting remote CI minutes (repository changes, proposed not applied)
 
 A configuration cannot stop a repository's workflows from triggering on push.
 That is decided by each repository's `.github/workflows`, which belong to that
@@ -273,5 +332,6 @@ minimal `permissions`).
 ## Report
 
 State what `auto` ran and its result, every check recorded unsupported with its
-reason, act jobs run, skipped and remote-only (and why), and that remote CI is
-still to run. Never present local evidence as remote proof.
+reason, act jobs run, skipped and remote-only (and why), any failure reread
+from its log, and that GitHub Actions is still to run. Never present local
+evidence as remote proof.

@@ -9,6 +9,7 @@ reach GitHub or start a real workflow. Run by scripts/verify.sh.
 Usage: python3 scripts/test_local_ci.py [-v]
 Exit:  0 = every check held, 1 = at least one did not.
 """
+import hashlib
 import json
 import os
 import pathlib
@@ -18,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 LOCAL_CI = REPO / "bin" / "local-ci"
@@ -51,7 +53,15 @@ exit 1
 """
 DOCKER_STUB = """#!/bin/sh
 here=$(dirname "$0")
-if [ "$(cat "$here/docker.mode" 2>/dev/null)" = up ]; then echo "29.0.0 x86_64"; exit 0; fi
+printf '%s\\n' "$*" >> "$here/docker.argv"
+if [ "$(cat "$here/docker.mode" 2>/dev/null)" = up ]; then
+  case "$*" in *"--filter network="*) cat "$here/docker.netcontainers" 2>/dev/null; exit 0 ;; esac
+  case "$1" in
+    ps) [ -f "$here/docker.psfail" ] && { echo "permission denied" >&2; exit 1; }; cat "$here/docker.containers" 2>/dev/null; exit 0 ;;
+    volume) cat "$here/docker.volumes" 2>/dev/null; exit 0 ;;
+  esac
+  echo "29.0.0 x86_64"; exit 0
+fi
 echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2
 exit 1
 """
@@ -1247,12 +1257,325 @@ def scenario_auto(sb: Sandbox) -> None:
     sb.stub("act", ACT_STUB)
 
 
+# act stub for runner capabilities: a job prints act.out.<job> and exits act.rc.<job> (default 1) when
+# that file exists, and otherwise succeeds.
+ACT_CAP_STUB = """#!/bin/sh
+here=$(dirname "$0")
+if [ "$1" = "--version" ]; then echo "act version 0.2.97"; exit 0; fi
+if [ "$1" = "--help" ]; then echo "  --container-options-policy string"; exit 0; fi
+printf '%s\\n' "$*" >> "$here/act.argv"
+job=$(printf '%s\\n' "$*" | sed -n 's/.* -j \\([^ ]*\\) .*/\\1/p')
+if [ -f "$here/act.out.$job" ]; then cat "$here/act.out.$job"; exit "$(cat "$here/act.rc.$job" 2>/dev/null || echo 1)"; fi
+echo "[CI/$job] 🏁  Job succeeded"
+"""
+# act's own exec of a JavaScript action's entry point, then the runner cannot find node: the step never ran.
+NO_NODE = ("  🐳  docker exec cmd=[node /var/run/act/actions/a/dist/index.js] user= workdir=\n"
+           '  | OCI runtime exec failed: exec failed: unable to start container process: exec: "node": executable file '
+           "not found in $PATH\n")
+NO_DOCKER = ("  | failed to connect to the docker API at unix:///var/run/docker.sock; check if the path is correct and if "
+             "the daemon is running: dial unix /var/run/docker.sock: connect: no such file or directory\n"
+             "  | make: *** [Makefile:63: db-down] Error 1\n")
+NO_DAEMON = "  | Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?\n"
+# The step ran and the code's own image lacks node: `docker compose exec app node` inside a run step.
+APP_NO_NODE = ("  🐳  docker exec cmd=[bash -e /var/run/act/workflow/3] user= workdir=\n"
+               '  | OCI runtime exec failed: exec failed: unable to start container process: exec: "node": executable '
+               "file not found in $PATH\n")
+
+
+def act_log(job: str, *steps: tuple[str, str | None]) -> str:
+    """An act log: each (step, output) runs; output None passes, any other text fails the step."""
+    out = []
+    for step, text in steps:
+        out.append(f"[CI/{job}] ⭐ Run {step}\n")
+        if text is None:
+            out.append(f"[CI/{job}]   ✅  Success - {step} [10ms]\n")
+        else:
+            out += [f"[CI/{job}]{line}\n" for line in text.splitlines()] + [f"[CI/{job}]   ❌  Failure - {step} [12ms]\n"]
+    return "".join(out) + f"[CI/{job}] 🏁  Job failed\n"
+
+
+CAP_YML = """name: CI
+on:
+  pull_request:
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+      - run: ./ci/lint.sh
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./ci/unit.sh
+  stack:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+      - run: make test-all
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./dev/smoke.sh
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./ci/probe.sh
+  after-stack:
+    runs-on: ubuntu-latest
+    needs: [stack]
+    steps:
+      - run: ./ci/unit.sh
+  boxed:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3
+    steps:
+      - run: ./ci/unit.sh
+  db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+    steps:
+      - run: ./ci/unit.sh
+"""
+CAP_MAKEFILE = ("COMPOSE := docker compose\n\ntest-all: deps ## everything\n\tnpm test\n\n"
+                "deps: check-tools\n\ncheck-tools:\n\t@$(COMPOSE) version >/dev/null\n\n"
+                "test:\n\t@${DOCKER:-docker} compose -p proj up -d db && pytest\n")
+
+
+def scenario_capabilities(sb: Sandbox) -> None:
+    """Runner capabilities: Docker reached through make or scripts is never run against the developer's
+    daemon, missing runner capabilities are unsupported (never a pass, never a failure), genuine
+    failures stay failures, and old records are reread only from their own logs."""
+    sb.stub("act", ACT_CAP_STUB)
+    sb.stub("npm", NPM_STUB)
+    sb.stub("docker", DOCKER_STUB)
+    sb.mode("docker", "up")
+    for f in [*sb.stubs.glob("act.out.*"), *sb.stubs.glob("act.rc.*"), sb.stubs / "act.argv", sb.stubs / "docker.argv",
+              sb.stubs / "npm.fail", sb.stubs / "docker.containers", sb.stubs / "docker.volumes"]:
+        f.unlink(missing_ok=True)
+    make = shutil.which("make")
+    if make and not (sb.stubs / "make").exists():
+        (sb.stubs / "make").symlink_to(make)  # so `make test` is discovered as a check, never run here
+
+    def jobs_run() -> list[str]:
+        p = sb.stubs / "act.argv"
+        return [c.split(" -j ")[1].split()[0] for c in (p.read_text().splitlines() if p.exists() else [])]
+
+    def act_out(job: str, text: str | None, rc: int = 1) -> None:
+        for name, value in ((f"act.out.{job}", text), (f"act.rc.{job}", None if text is None else str(rc))):
+            if value is None:
+                (sb.stubs / name).unlink(missing_ok=True)
+            else:
+                (sb.stubs / name).write_text(value)
+
+    def status() -> dict:
+        return json.loads(sb.lci(root, "status", "--json").stdout)["worktree"]
+
+    def unverified() -> dict[str, str]:
+        return {u["name"]: u["reason"] for u in status()["unsupported"]}
+
+    script = "#!/bin/sh\ntrue\n"
+    root = sb.repo("cap", {".github/workflows/ci.yml": CAP_YML, "Makefile": CAP_MAKEFILE,
+                           "ci/lint.sh": script, "ci/unit.sh": script, "ci/probe.sh": script,
+                           "dev/smoke.sh": "#!/bin/sh\nexec ./dev/inner.sh\n",
+                           "dev/inner.sh": "#!/bin/sh\ndocker volume inspect proj_pgdata\n",
+                           "package.json": json.dumps({"scripts": {"test": "node t.js"}}), "src/x.js": "1\n"})
+    for s in ("ci/lint.sh", "ci/unit.sh", "ci/probe.sh", "dev/smoke.sh", "dev/inner.sh"):
+        (root / s).chmod(0o755)
+    sb.git(root, "add", "-A")
+    sb.git(root, "commit", "-qm", "exec bits")
+
+    # Plan: Docker reached only through a Makefile target or a script chain is not a runnable job.
+    plan = json.loads(sb.lci(root, "plan", "--json").stdout)["validation"]
+    why = {x["name"]: x["reason"] for x in plan["unsupported"]}
+    req = [r["label"] for r in plan["required"]]
+    check("make test-all -> deps -> check-tools" in why.get("act:ci.yml:stack", "")
+          and "dev/inner.sh" in why.get("act:ci.yml:smoke", ""),
+          "Docker reached through a make target or a script chain: unsupported, the chain named", str(why))
+    check("npm run test" in why.get("act:ci.yml:stack", "") and "not for this job on GitHub" in why["act:ci.yml:stack"],
+          "an unsupported job's command that also runs directly is named as direct evidence, not as the job",
+          why.get("act:ci.yml:stack", ""))
+    check({"act:ci.yml:lint", "act:ci.yml:unit", "act:ci.yml:probe", "npm run test"} <= set(req)
+          and not {"act:ci.yml:stack", "act:ci.yml:smoke", "act:ci.yml:after-stack", "act:ci.yml:db"} & set(req),
+          "jobs without Docker stay required; Docker jobs are not dropped silently but listed unsupported", str(req))
+    check("Docker" in why.get("act:ci.yml:after-stack", ""),
+          "a job that needs a Docker job (act -j runs both) is unsupported too", why.get("act:ci.yml:after-stack", ""))
+    check("isolated network" in why.get("act:ci.yml:db", ""),
+          "a job with service containers is unsupported: they need the host network", why.get("act:ci.yml:db", ""))
+    check(make is None or ("starts Docker on this machine's daemon" in why.get("make test", "")
+                           and "make test" not in req),
+          "a discovered local check that starts Docker through its Makefile is not run on the developer's daemon",
+          why.get("make test", ""))
+
+    # Run: a normal job passes, Node missing in the runner and Docker missing in a step are unsupported.
+    act_out("lint", act_log("lint", ("Main actions/setup-node@v4", NO_NODE), ("Main ./ci/lint.sh", None)))
+    act_out("probe", act_log("probe", ("Main ./ci/probe.sh", NO_DAEMON), ("Post Upload artifacts", NO_NODE)))
+    r = sb.lci(root, "auto")
+    ran = jobs_run()
+    check("stack" not in ran and "smoke" not in ran and not any("--docker-socket" in c or "daemon-socket -" not in c
+                                                                for c in (sb.stubs / "act.argv").read_text().splitlines()),
+          "a Docker-dependent job without isolation is never handed to act; no job gets the socket", str(ran))
+    calls = (sb.stubs / "act.argv").read_text().splitlines()
+    nets = {c.split("--network ")[1].split()[0] for c in calls if "--network " in c}
+    dargv = (sb.stubs / "docker.argv").read_text()
+    check(len(nets) == 1 and all("--network local-ci-" in c and "--add-host=host.docker.internal:127.0.0.1" in c
+                                 for c in calls)
+          and f"network create --driver bridge {next(iter(nets))}" in dargv and f"network rm {next(iter(nets))}" in dargv,
+          "act jobs run on a network of their own (created, then removed), host aliases pointed at themselves",
+          str(calls[:1]) + dargv)
+    st = status()
+    check("act:ci.yml:unit" in st["passes"], "a normal runnable act job passes", str(st))
+    u = unverified()
+    check("`node`" in u.get("act:ci.yml:lint", "") and "missing runner capability" in u["act:ci.yml:lint"]
+          and "act:ci.yml:lint" not in st["blocking"] + st["passes"],
+          "an act runner missing Node: unsupported with that reason, neither a failure nor a pass", str(u))
+    check("Docker engine" in u.get("act:ci.yml:probe", "") and "act:ci.yml:probe" not in st["blocking"],
+          "a step that needed Docker the job is not given: unsupported, not an application failure", str(u))
+    check(r.returncode == 0 and st["ok"] and "npm run test" in st["passes"],
+          "direct checks that ran keep their evidence; runnable required checks passed, so auto passes", r.stdout)
+    shown = ("stack", "smoke", "lint", "probe", "after-stack", "db")
+    check(all(f"unverified locally: act:ci.yml:{n} - " in r.stdout for n in shown) and "GitHub Actions" in r.stdout,
+          "every unsupported job stays visible in the final report, GitHub Actions named as their check", r.stdout)
+    sb.git(root, "commit", "-qam", "validated", "--allow-empty")
+    out = sb.hook_out(GATE_HOOK, "git push origin HEAD", root) or {}
+    ctx = out.get("additionalContext", "")
+    check("permissionDecision" not in out and all(f"act:ci.yml:{n} (" in ctx for n in shown)
+          and "GitHub Actions is their only verification" in ctx,
+          "the push is allowed and names every job only GitHub Actions can verify", str(out))
+
+    # --docker-socket is the user's explicit authorization, and still never the developer's own daemon.
+    (sb.stubs / "docker.volumes").write_text("proj_pgdata\nact-toolcache\n")
+    (sb.stubs / "docker.containers").write_text("proj-postgres-1\n")
+    before = len(jobs_run())
+    r = sb.lci(root, "act", "--job", "stack", "--docker-socket")
+    check(len(jobs_run()) == before and r.returncode == 3 and "proj_pgdata" in r.stdout and "proj-postgres-1" in r.stdout,
+          "--docker-socket on a daemon holding other containers/volumes: refused, they are named", r.stdout)
+    r = sb.lci(root, "act", "--job", "unit", "--docker-socket")
+    check(len(jobs_run()) == before and r.returncode == 3 and "would give this job the socket too" in r.stdout
+          and "proj_pgdata" in r.stdout,
+          "--docker-socket is refused for a job not known to use Docker too: the socket would reach it", r.stdout)
+    (sb.stubs / "docker.volumes").write_text("act-portal_pgdata\n")
+    r = sb.lci(root, "act", "--job", "unit", "--docker-socket")
+    check(len(jobs_run()) == before and "act-portal_pgdata" in r.stdout,
+          "a developer volume whose name merely starts with act- is not taken for act's own", r.stdout)
+    r = sb.lci(root, "act", "--job", "stack")
+    check(len(jobs_run()) == before and r.returncode == 3 and "never mounted automatically" in r.stdout,
+          "`local-ci act` without --docker-socket does not run a Docker job either", r.stdout)
+    (sb.stubs / "docker.psfail").write_text("")
+    (sb.stubs / "docker.volumes").write_text("")
+    r = sb.lci(root, "act", "--job", "stack", "--docker-socket")
+    check(len(jobs_run()) == before and "could not be listed" in r.stdout,
+          "a daemon whose containers cannot be listed is not taken for isolated", r.stdout)
+    (sb.stubs / "docker.psfail").unlink()
+    (sb.stubs / "docker.volumes").write_text("act-toolcache\n")
+    (sb.stubs / "docker.containers").write_text("")
+    r = sb.lci(root, "act", "--job", "stack", "--docker-socket")
+    last = (sb.stubs / "act.argv").read_text().splitlines()[-1]
+    check(jobs_run()[-1] == "stack" and "--container-daemon-socket" not in last,
+          "--docker-socket on an isolated daemon (only act's own volumes): the job runs with the socket", last)
+
+    # Genuine failures are never hidden behind a capability or an unsupported label.
+    edit(root, 2)
+    act_out("unit", act_log("unit", ("Main ./ci/unit.sh", "  | AssertionError: 1 failing\n"),
+                            ("Main Stop containers", NO_DOCKER)))
+    r = sb.lci(root, "auto")
+    st = status()
+    check(r.returncode == 1 and "act:ci.yml:unit" in st["blocking"],
+          "a genuine test failure next to a Docker-less cleanup step is a failure and blocks", r.stdout)
+    sb.git(root, "commit", "-qam", "broken")
+    check(sb.hook(GATE_HOOK, "git push origin HEAD", root) == "deny", "the failing test blocks publication")
+    act_out("unit", act_log("unit", ("Main ./ci/unit.sh", NO_NODE)))
+    sb.lci(root, "act", "--job", "unit", "--force")
+    check("act:ci.yml:unit" in status()["blocking"],
+          "a later run that only lacks a runner capability does not clear a recorded failure")
+    r = sb.lci(root, "unsupported", "--name", "act:ci.yml:unit", "--reason", "runner")
+    check(r.returncode == 1 and "act:ci.yml:unit" in status()["blocking"],
+          "a failed job cannot be relabelled unsupported by hand", r.stderr)
+    r = sb.lci(root, "auto")
+    check(r.returncode == 1 and "Read again" not in r.stdout,
+          "a failure recorded by the current classifier is never reread into unsupported", r.stdout)
+    for n, (out, what) in enumerate([
+            (act_log("unit", ("Main ./ci/unit.sh", "  | FAILED tests/test_x.py::test_y - AssertionError\n" + NO_DAEMON)),
+             "a genuine failure and a Docker-socket line in the same step: a failure"),
+            (act_log("unit", ("Main ./ci/unit.sh", APP_NO_NODE)),
+             "`node` missing inside the code's own container (the step ran): a failure, not the runner's"),
+            (act_log("unit", ("Main ./ci/unit.sh", NO_DAEMON + "  ❗  ::error file=src/x.js,line=1::3 lint problems\n")),
+             "an ::error annotation next to a Docker-socket line in the same step: a failure")], start=30):
+        edit(root, n)
+        act_out("unit", out)
+        r = sb.lci(root, "act", "--job", "unit")
+        check(r.returncode == 1 and "act:ci.yml:unit" in status()["blocking"], what, r.stdout)
+
+    edit(root, 40)
+    act_out("boxed", act_log("boxed", ("Main ./ci/unit.sh", NO_NODE.replace("node", "bash"))))
+    (sb.stubs / "docker.netcontainers").write_text("act-CI-boxed-0123456789abcdef0123\n")
+    (sb.stubs / "docker.argv").write_text("")
+    r = sb.lci(root, "act", "--job", "boxed")
+    dargv = (sb.stubs / "docker.argv").read_text()
+    check(r.returncode == 1 and "act:ci.yml:boxed" in status()["blocking"],
+          "a program missing from the job's own `container:` image is the workflow's failure, as on GitHub", r.stdout)
+    check("rm -f act-CI-boxed-0123456789abcdef0123" in dargv
+          and dargv.index("rm -f act-CI-boxed") < dargv.index("network rm local-ci-"),
+          "a container left on the run's network (act killed at a timeout) is removed, then the network", dargv)
+    (sb.stubs / "docker.netcontainers").unlink()
+    act_out("boxed", None)
+
+    # Records written before this classifier: reread from their own logs, and only capability-only ones.
+    # Both jobs now only lack a runner capability, which on its own never clears a failure.
+    edit(root, 3)
+    act_out("unit", act_log("unit", ("Main ./ci/unit.sh", NO_NODE)))
+    act_out("lint", act_log("lint", ("Main ./ci/lint.sh", NO_NODE)))
+    ledger = sb.state / (hashlib.sha256(os.path.realpath(root).encode()).hexdigest()[:16] + ".jsonl")
+    fp = status()["fp"]
+    logs = sb.base / "legacy-logs"
+    logs.mkdir()
+    (logs / "cap.log").write_text(act_log("unit", ("Main ./ci/unit.sh", NO_DOCKER), ("Post setup", NO_NODE)))
+    (logs / "real.log").write_text(act_log("lint", ("Main ./ci/lint.sh", "  | error: 3 problems\n")))
+    with ledger.open("a") as fh:  # probe: by the current classifier; db: a timeout - neither is reread
+        for job, log, extra in (("unit", "cap.log", {}), ("lint", "real.log", {}), ("probe", "cap.log", {"classifier": 2}),
+                                ("db", "cap.log", {"exit": 124})):
+            fh.write(json.dumps({"ts": time.time() - 60, "fp": fp, "name": f"act:ci.yml:{job}", "kind": "act",
+                                 "status": "fail", "detail": "old", "exit": 1, "log": str(logs / log),
+                                 "cmd": "event=pull_request", **extra}) + "\n")
+    r = sb.lci(root, "auto")
+    st = status()
+    check("Read again" in r.stdout and "act:ci.yml:unit: recorded fail -> unsupported" in r.stdout
+          and "act:ci.yml:unit" not in st["blocking"] + st["passes"] and "act:ci.yml:unit" in unverified(),
+          "a pre-classifier failure whose log shows only missing capabilities is reread, visibly, to unsupported",
+          r.stdout)
+    check({"act:ci.yml:probe", "act:ci.yml:db"} <= set(st["blocking"]),
+          "a failure recorded by the current classifier, or a timeout, is never reread", str(st["blocking"]))
+    check("act:ci.yml:lint" in st["blocking"] and not st["ok"],
+          "a pre-classifier failure with a genuine failing step is not reread; a capability-only rerun keeps it",
+          str(st))
+
+    # Evidence is for exactly one tree.
+    edit(root, 4)
+    act_out("lint", None)
+    sb.lci(root, "auto")
+    check(status()["ok"], "fresh content validated")
+    sb.git(root, "add", "-A")
+    sb.git(root, "commit", "-qm", "validated")
+    sb.git(root, "switch", "-qc", "other")
+    edit(root, 5)
+    sb.git(root, "commit", "-qam", "other content")
+    sb.git(root, "switch", "-q", "-")
+    check(sb.ok(root) and not sb.ok(root, "--rev", "other"),
+          "the gate does not accept one tree's evidence for another branch's tree")
+    check(sb.hook(GATE_HOOK, "git push origin other", root) == "deny",
+          "pushing the unvalidated branch is denied while HEAD is validated")
+    edit(root, 6)
+    check(not status()["ok"], "changed content invalidates the earlier validation")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="local-ci-test-") as tmp:
         sb = Sandbox(pathlib.Path(tmp).resolve())
         sb.stub("gh", GH_STUB)
         for scenario in (scenario_evidence, scenario_act, scenario_stacks, scenario_git_hooks,
-                         scenario_gate_table, scenario_installer, scenario_auto):
+                         scenario_gate_table, scenario_installer, scenario_auto, scenario_capabilities):
             if VERBOSE:
                 print((scenario.__doc__ or "").splitlines()[0])
             try:
