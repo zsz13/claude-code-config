@@ -210,6 +210,7 @@ from its HTTPS endpoint.
 |---|---|
 | **Instructions only ("run the full gate before pushing")** | That was the previous state. Nothing recorded what ran or for which content, and nothing acted at the moment of the push, which is where the habit of pushing to see shows up. |
 | **Run every workflow job through act, always** | A plain job that runs the same command as a local check would run it twice; jobs needing secrets, a GitHub token, macOS or the Docker socket cannot run honestly; deploy jobs must not run at all. act runs every other affected job by default. |
+| **A repository check list read from the working tree** | The change being validated could rewrite it to `["true"]`. `.local-ci.json` is read from the merge base with the default branch, so it governs only changes made after it was reviewed and merged. |
 | **Publishable once any check passed (the first version)** | One passing `true` covered a repository whose failing test suite never ran. The plan is derived from the repository and every required item must pass. |
 | **Run the checks inside the Stop hook** | A hook cannot hand the agent a failing log to fix, an act job outlasts a sensible hook timeout, and a hook that runs checks at every turn end recurses into its own work. The hook asks once per content state; the agent runs `local-ci auto` where its output is visible. |
 | **Validate after every edit (PostToolUse)** | Runs the suite on half-finished work dozens of times per task. Validation is batched at the end of the turn, and evidence for unchanged content is reused. |

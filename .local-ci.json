@@ -1,0 +1,6 @@
+{
+  "checks": ["./scripts/verify.sh --repo-only"],
+  "exclude": {
+    "./scripts/verify.sh": "without --repo-only it also compares the installation in ~/.claude with this repository, which a change to the repository cannot make pass; CLAUDE.md prescribes --repo-only"
+  }
+}

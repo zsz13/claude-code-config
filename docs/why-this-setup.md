@@ -321,7 +321,12 @@ act or a secret is missing; reported with the exact reason, never a pass),
 here, with the reason), or *remote only* (a deploy, release or publish job).
 The gate requires a recorded plan and every required item passing. The plan is
 derived, not chosen, so a narrower one cannot be picked to get a green result,
-and a required check cannot be relabelled unsupported. What it still cannot
+and a required check cannot be relabelled unsupported. Discovery can guess
+wrong — a `scripts/verify.sh` that needs an argument, as this repository's own
+does — so a repository may declare its checks in `.local-ci.json`, and that
+file is read only from the merge base with the default branch: whoever loosens
+the checks has to get that through review first, and never in the change the
+loosened checks would validate. What it still cannot
 know is a check the repository runs but does not declare anywhere a tool can
 read (a README instruction); the report names what ran.
 

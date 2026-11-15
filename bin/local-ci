@@ -1405,6 +1405,41 @@ def package_dirs(root: str, changed: list[str] | None) -> list[str]:
     return sorted(set(dirs))
 
 
+DECLARATION = ".local-ci.json"
+
+
+def declaration(root: str) -> tuple[dict, list[dict]]:
+    """The repository's own word on its checks, and notes for the plan. `.local-ci.json` is read as
+    committed at the merge base with the default branch - reviewed and merged - never from the change
+    being validated, so a change cannot loosen its own checks: {"checks": [commands to add],
+    "exclude": {discovered command: why it is not a check of this repository}}. Invalid: ignored."""
+    base = default_branch(root)
+    mb = git_s(root, "merge-base", "HEAD", base, check=False) if base else ""
+    text = git(root, "show", f"{mb}:{DECLARATION}", check=False).decode(errors="replace") if mb else ""
+    here = read_text(Path(root, DECLARATION))
+    notes = []
+    if here != text:
+        notes.append({"name": DECLARATION, "reason": (
+            "no base branch to read a reviewed version from; ignored" if not mb else
+            "added by this change; it applies once merged" if not text else
+            "changed by this change; the base branch's version applies, this one once merged")})
+    if not text:
+        return {}, notes
+    try:
+        d = json.loads(text)
+        ok = (isinstance(d, dict) and set(d) <= {"checks", "exclude"}
+              and isinstance(d.get("checks", []), list) and all(isinstance(c, str) and c.strip() for c in d.get("checks", []))
+              and isinstance(d.get("exclude", {}), dict)
+              and all(isinstance(k, str) and isinstance(v, str) and v.strip() for k, v in d.get("exclude", {}).items()))
+    except ValueError:
+        ok = False
+    if not ok:
+        notes.append({"name": DECLARATION, "reason": "the base branch's version is not {\"checks\": [commands], "
+                                                     "\"exclude\": {command: reason}}; ignored"})
+        return {}, notes
+    return d, notes
+
+
 def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tuple[dict, dict, str]], bool]:
     """The validation plan for the working tree: every check the repository defines and every affected
     workflow job, each one required (runs here and must pass), unsupported (cannot run here, with
@@ -1414,12 +1449,17 @@ def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tu
     base, changed = changed_files(root)
     required: list[dict] = []
     unsupported: list[dict] = []
-    skipped: list[dict] = []
     remote: list[dict] = []
     local: dict[str, str] = {}
+    declared, skipped = declaration(root)
     items = list(dict.fromkeys((c, d) for d in ["."] + package_dirs(root, changed)
                                for s in discover_checks(Path(root, d)) if d == "." or s["stack"] in PACKAGE_STACKS
                                for c in s["commands"]))
+    excluded = declared.get("exclude", {})
+    skipped += [{"name": c, "reason": f"excluded by {DECLARATION} on the base branch: {excluded[c]}"}
+                for c, d in items if d == "." and c in excluded]
+    items = [(c, d) for c, d in items if not (d == "." and c in excluded)]
+    items += [(c, ".") for c in declared.get("checks", []) if (c, ".") not in items]
     for c, d in sorted(items, key=lambda x: cost_rank(x[0])):
         lbl = label({"name": c, "cwd": d})
         miss = missing_tools(os.path.join(root, d), c)

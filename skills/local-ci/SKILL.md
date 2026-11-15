@@ -76,6 +76,14 @@ change the repository's workflow to get a pass. A README, CONTRIBUTING or the
 repository's own `CLAUDE.md` outranks the plan when they name a check it cannot
 see: run that one too with `local-ci run -- <cmd>` (any failure blocks).
 
+A repository can state its checks in `.local-ci.json`:
+`{"checks": ["<command>", ...], "exclude": {"<discovered command>": "<why it is not a check here>"}}`.
+It is read only as committed at the merge base with the default branch, so it
+takes effect once merged: a change can never loosen the checks that validate
+it, and adding or editing the file is reported in the plan. Use it when
+discovery guesses wrong (a script that needs an argument), not to skip a check
+that fails; an exclusion without a reason makes the file invalid and ignored.
+
 The single steps, for diagnosis: `plan` (what was discovered and why),
 `run -- <cmd>` (one check, recorded; a one-string command is its own name, so it
 is the plan's check), `act --list` / `act --workflow F --job J` (one job).

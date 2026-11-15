@@ -88,7 +88,10 @@ below.) All three are narrow by design:
   a PR or start a workflow until every required check of the validation plan
   recorded for the published content has passed. A trivial check recorded as
   the only evidence no longer passes it: the plan is derived by `local-ci auto`,
-  not chosen, and a required check cannot be relabelled unsupported. It decides
+  not chosen, and a required check cannot be relabelled unsupported. A
+  repository's `.local-ci.json` can add checks or exclude a discovered one with
+  a reason, but only as committed on its base branch: the change under
+  validation cannot edit what validates it. It decides
   from a file under `~/.cache/claude-hooks/local-ci/`; a forged record there
   would pass it, and so would a plan recorded on a machine made to look as if
   the tools were missing. It stops a careless push, not a deliberate one. The opt-in

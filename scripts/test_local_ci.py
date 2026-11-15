@@ -1044,6 +1044,44 @@ def scenario_auto(sb: Sandbox) -> None:
           "an `on:` list written over several lines is read", str(wfs["a.yml"]["triggers"]))
     check(not wfs["b.yml"]["relevant"], "a tag-only push does not make a code change relevant", wfs["b.yml"]["relevance"])
 
+    # a repository's reviewed declaration: read from the base branch, never from the change itself
+    decl = {"checks": ["./scripts/verify.sh --repo-only"],
+            "exclude": {"./scripts/verify.sh": "without --repo-only it verifies an installation, not the repository"}}
+    dr = sb.repo("auto-declared", {"scripts/verify.sh": '#!/bin/sh\n[ "$1" = --repo-only ]\n', "a.txt": "1\n"})
+    (dr / "scripts" / "verify.sh").chmod(0o755)
+    sb.git(dr, "add", "-A")
+    sb.git(dr, "commit", "-qm", "exec")
+    sb.git(dr, "switch", "-qc", "f")
+    (dr / ".local-ci.json").write_text(json.dumps(decl))
+    plan = json.loads(sb.lci(dr, "plan", "--json").stdout)["validation"]
+    check([r["label"] for r in plan["required"]] == ["./scripts/verify.sh"]
+          and any(s["name"] == ".local-ci.json" and "once merged" in s["reason"] for s in plan["skipped"]),
+          "a declaration added by the change itself does not govern that change", str(plan))
+    sb.git(dr, "switch", "-q", "main")
+    sb.git(dr, "add", "-A")
+    sb.git(dr, "commit", "-qm", "declare")
+    sb.git(dr, "switch", "-qc", "g")
+    (dr / "a.txt").write_text("2\n")
+    r = sb.lci(dr, "auto")
+    plan = json.loads(sb.lci(dr, "plan", "--json").stdout)["validation"]
+    check(r.returncode == 0 and [x["label"] for x in plan["required"]] == ["./scripts/verify.sh --repo-only"]
+          and any(s["name"] == "./scripts/verify.sh" and "installation" in s["reason"] for s in plan["skipped"]),
+          "a declaration on the base branch adds its checks and excludes a discovered one, with the reason", r.stdout)
+    (dr / ".local-ci.json").write_text(json.dumps({"checks": [], "exclude": {"./scripts/verify.sh --repo-only": "x"}}))
+    plan = json.loads(sb.lci(dr, "plan", "--json").stdout)["validation"]
+    check([x["label"] for x in plan["required"]] == ["./scripts/verify.sh --repo-only"],
+          "editing the declaration in the change cannot drop the checks the base branch declared", str(plan))
+    sb.git(dr, "checkout", "-q", ".local-ci.json")
+    sb.git(dr, "switch", "-q", "main")
+    (dr / ".local-ci.json").write_text('{"exclude": {"./scripts/verify.sh": ""}}')
+    sb.git(dr, "commit", "-qam", "bad")
+    sb.git(dr, "switch", "-qc", "h")
+    (dr / "a.txt").write_text("3\n")
+    plan = json.loads(sb.lci(dr, "plan", "--json").stdout)["validation"]
+    check([x["label"] for x in plan["required"]] == ["./scripts/verify.sh"]
+          and any(s["name"] == ".local-ci.json" and "ignored" in s["reason"] for s in plan["skipped"]),
+          "an exclusion without a reason makes the declaration invalid: ignored and reported", str(plan))
+
     gated = sb.repo("auto-gated", {".github/workflows/ci.yml": "on: [pull_request]\njobs:\n  gated:\n"
                                    "    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n"
                                    "    steps:\n      - run: ./ci.sh\n", "Makefile": "check:\n\ttrue\n"})
