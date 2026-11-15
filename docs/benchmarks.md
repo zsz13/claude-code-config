@@ -1205,9 +1205,22 @@ for any saving in Actions minutes.
   `docker` and `gh`, pushes only to a local bare repository. It covers a pass
   allowing a push, a failure blocking it, edits and partial commits making
   evidence stale, act or Docker missing or down, unsafe and unsupported jobs,
-  environmental versus genuine act failures, secrets kept out of act's
+  environmental versus genuine act failures, Docker reached through `make` or a
+  script chain never run without an isolated daemon, a runner missing `node` or
+  the Docker socket recorded unsupported while a genuine failing step in the
+  same job stays a failure, pre-classifier failures reread only from their own
+  logs, secrets kept out of act's
   environment, existing hooks and `core.hooksPath` left alone, the installer,
   and the command table the hook decides. `scripts/verify.sh` runs it.
+- **Network isolation, one real probe** (act 0.2.97, Docker Desktop, arm64
+  Mac): a job that only opened a TCP connection reached a published dev
+  database port at `127.0.0.1` and `host.docker.internal` on act's default
+  host network; on a dedicated bridge network with those host names pointed at
+  the container, both were closed and the internet was reachable, while
+  Docker Desktop's host-gateway IP `192.168.65.254` still answered, as did
+  `host.docker.internal` from a job with its own `container:` image (act
+  applies only the workflow's options there). Observed once, on one machine;
+  not repeated on Linux or colima.
 - **One real act run** (act 0.2.97, Docker 29 on an arm64 Mac, `linux/amd64`
   containers, a two-job workflow on `debian:bookworm-slim`): the passing job was
   recorded as a pass, the failing one as a failure naming its step, and the gate

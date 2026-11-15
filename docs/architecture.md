@@ -184,7 +184,8 @@ each item into required, unsupported, skipped or remote-only with its reason,
 records the plan against a fingerprint of the tree's content, and runs every
 required check that has not passed for that content (repository commands
 cheapest first, then the jobs under nektos/act in a stripped environment with
-no secrets and no Docker socket). `plan`, `run` and `act` are the same steps
+no secrets and no Docker socket; a job that reaches Docker, directly or through
+`make` or a script, is unsupported unless the user gives it an isolated daemon). `plan`, `run` and `act` are the same steps
 one at a time, for diagnosis; `gate` answers whether a rev is publishable —
 recorded plan, every required check passed — which is what the `local-ci-gate`
 hook and the opt-in git `pre-push` hook ask; `session` is the

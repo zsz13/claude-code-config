@@ -145,7 +145,35 @@ Docker engine. `local-ci act` treats it as untrusted:
   (which is root on the host). With `--container-options-policy restrict`
   (act 0.2.97 has it) act also refuses workflow-set host mounts and options;
   with an older act, jobs that set them, and jobs needing those, are skipped. `--docker-socket` is an
-  explicit opt-in for trusted workflows;
+  explicit opt-in for trusted workflows, and even then it is refused unless the
+  daemon holds no container or volume act did not create: a job with the socket
+  can reuse or delete everything on the daemon, and a compose file with a
+  pinned project name would adopt the developer's own containers and database
+  volumes;
+- a job that uses Docker is recognised when a step names it and when a step
+  reaches it through a Makefile target (prerequisites, `$(MAKE)` calls,
+  variables) or a repository script, followed transitively. The match is broad
+  on purpose: a false positive leaves one job to remote CI, a miss runs it;
+- jobs never run on act's default host network. Measured with act 0.2.97 and
+  Docker Desktop on an arm64 Mac: on the host network a job opened the TCP port
+  of the developer's published dev database at `127.0.0.1` and at
+  `host.docker.internal`. Each run now creates its own bridge network (removed
+  afterwards) and points `host.docker.internal` and `gateway.docker.internal`
+  at the job container; there, the same probe found both closed and the
+  internet reachable. Docker Desktop's host-gateway address (`192.168.65.254`)
+  still answered: a workflow that names that internal address on purpose can
+  reach host ports. So did `host.docker.internal` from a job with its own
+  `container:` image, because act gives such a container only the workflow's
+  options, not `--container-options` (measured the same way); `localhost` was
+  closed there too. Neither name exists on GitHub's Linux runners, so only a
+  workflow written to reach the developer's machine uses them. That is a deliberate act by the repository's own code,
+  which `auto` already runs on the host as its local checks (below). Jobs with
+  `services:` are not run, since they expect the host network;
+- the socket check covers every job, not only those recognised as Docker
+  users: `--docker-socket` mounts it into all of them, so all are refused on a
+  daemon that holds anything act did not create (its `act-toolcache` volume
+  and hash-named job containers), and the check is repeated just before act
+  starts;
 - deploy, release and publish jobs, jobs with a deployment environment or write
   permissions, steps that push, publish, sync files out or call a cloud CLI,
   and any job that needs one of those (act runs a job's `needs:` too) are never
@@ -166,7 +194,11 @@ user's decision, never the agent's; the plan says so where it applies.
 `local-ci auto` runs the check commands the repository defines — `npm run`
 scripts, Makefile targets, `scripts/verify*`, `pre-commit run`, `uv run`
 (which installs dependencies), `terraform init` (which fetches providers) — on
-the host, with the user's environment, and without act's isolation. That is the
+the host, with the user's environment, and without act's isolation. A
+*discovered* command that starts Docker through a Makefile target or a script
+is the exception: on the developer's daemon a pinned compose project adopts
+their containers and `down -v` deletes their volumes, so it is reported
+unsupported unless the repository declares it in `.local-ci.json`. That is the
 same trust as running the repository's tests by hand, and it is now automatic:
 the Stop hook asks for it after any session that changed the repository. A
 repository you would not run `make test` in is one you should not have the agent

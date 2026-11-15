@@ -52,7 +52,8 @@ pass. It reads shell text with `skill-install-guard.py`'s
 scanner (here-docs and comments are data; `sh -c`, `$(…)`, `cd`, `git -C` and
 wrappers are looked through), so both files must be installed together. When
 the push is allowed but some checks were recorded unsupported, it adds one line
-naming them, so the report cannot drop them. If it cannot load the scanner or
+naming them as GitHub Actions' to verify before merging, so the report cannot
+drop them. If it cannot load the scanner or
 find `local-ci`, it allows the command and says so in one line. For pushes the text never shows (a
 script, an alias), `local-ci hook install` adds a git `pre-push` hook to a
 repository that has none, enforced only in agent sessions; it never replaces a

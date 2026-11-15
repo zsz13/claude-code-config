@@ -223,8 +223,9 @@ def main() -> None:
             for u in r.get("unsupported", []):
                 notes.append(f"{u['name']} ({u['reason']})")
     if notes:
-        emit(additionalContext="local-ci: validated locally, but these checks were not verified here - report "
-                               "them as unverified: " + "; ".join(dict.fromkeys(notes)))
+        emit(additionalContext="local-ci: validated locally, but these checks did not run here, so GitHub Actions is "
+                               "their only verification - report them as unverified and confirm they pass remotely "
+                               "before merging: " + "; ".join(dict.fromkeys(notes)))
 
 
 if __name__ == "__main__":

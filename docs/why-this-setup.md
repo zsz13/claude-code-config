@@ -401,14 +401,38 @@ near a deploy, release or publish job; a job that needs the Docker socket or a
 GitHub token is reported unsupported rather than run to a guaranteed failure.
 act jobs run after the repository's own checks pass, because they cost minutes
 and a lint failure would make their result moot. Its environment failures (no daemon, image pull, clone)
-are recorded as *unsupported*, never as a test failure and never as a pass; a
-failed step is never relabelled environmental.
+are recorded as *unsupported*, never as a test failure and never as a pass.
+
+**Why Docker jobs are found through make and scripts, and why a running daemon
+is not enough.** The first version looked for `docker` in a workflow's own
+steps. A real application repository ran everything through `make test-all`
+and `make test-prod`, so those jobs looked plain and became required; under act
+they had no socket and failed at the first `docker` call, and the
+`actions/setup-node` and upload steps failed too, because act loses the
+runner image's `node` once a step such as `setup-uv` adds to `PATH`. Every one
+of those failures was the runner's, but a "failed step is never relabelled"
+rule recorded them as failures for content whose checks had all passed when run
+directly, and the gate refused it; a later unsupported run, by design, could
+not clear them. Mounting the socket would not have helped: the repository's
+compose file pins its project name, so the job would have driven the
+developer's own containers and database volume. So the classifier follows
+Makefile targets and repository scripts to find Docker; a job that needs it
+runs only with `--docker-socket` and only on a daemon that holds nothing act
+did not create; and a failed step is relabelled only when its *own* lines show
+one of two runner signatures (act's exec of the step could not find its
+program; the Docker socket is absent) and no other failure line. Any other
+failed step in the job keeps it a failure. Failures recorded by the earlier
+classifier are reread from their own logs, visibly, rather than waived; one
+that shows a genuine failure stays. Review then measured a second path to the
+same data: act's default host network let a job open the developer's database
+port, so jobs now run on a network of their own, and jobs with service
+containers (which need the host network) are left to GitHub.
 
 **What no configuration can do.** Whether a push triggers remote CI is decided
 by the repository's `.github/workflows`, not by anything in `~/.claude`. This
 setup reduces how often an agent pushes and makes each push count; reducing
 what each push costs (duplicate triggers, concurrency, path filters, caching,
-tiering) is a change to each repository, listed in the `local-ci` skill §7, and
+tiering) is a change to each repository, listed in the `local-ci` skill §8, and
 made only in the repository being worked on.
 
 ## Why skills are used on demand and installed by decision
