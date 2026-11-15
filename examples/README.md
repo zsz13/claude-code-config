@@ -25,7 +25,7 @@ subagent policy, skills on demand, context health, and safety.
 | Graphify routing section | Delete it entirely if you do not use a knowledge graph. It is about 20 lines of always-loaded text for a tool you may not have. |
 | Named skills | Remove references to any skill you did not install, so the model is not told to invoke something absent. |
 | "Skills on demand" section | It names the `skill-install-guard` hook. Drop that sentence if you did not install the hook, and drop the section if you do not use the `skills` CLI. |
-| "Local-first CI" section | It names `~/.claude/bin/local-ci`, the `local-ci-gate` hook and the `local-ci` skill. Without them, keep the second bullet; it is the policy. |
+| "Local-first CI" section | It names `~/.claude/bin/local-ci`, the `local-ci-gate` and `local-ci-auto` hooks and the `local-ci` skill. Without them, keep the second bullet; it is the policy. |
 | Tool names in "Quality gates" | The policy (one owner per job, no bypassing hooks) generalises; the specific tools may not be yours. |
 
 ### What to keep if you keep anything

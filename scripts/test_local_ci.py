@@ -13,6 +13,7 @@ import json
 import os
 import pathlib
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -250,6 +251,12 @@ class Sandbox:
     def ok(self, root, *args) -> bool:
         return self.lci(root, "gate", *args).returncode == 0
 
+    def validate(self, root) -> None:
+        """The minimum that makes content publishable where the repository defines no check of its own:
+        one recorded pass, and the validation plan recorded by `auto`."""
+        self.lci(root, "run", "--", "true")
+        self.lci(root, "auto")
+
 
 def scenario_evidence(sb: Sandbox) -> None:
     """1-3: a pass allows publishing, a failure blocks it, changed content makes evidence stale."""
@@ -259,6 +266,8 @@ def scenario_evidence(sb: Sandbox) -> None:
     unit = f"echo run >> {counter}"
     r = sb.lci(root, "run", "--name", "unit", "--", unit)
     check(r.returncode == 0 and "PASS" in r.stdout, "passing check is recorded", r.stdout + r.stderr)
+    check(not sb.ok(root), "a pass without a recorded validation plan is not enough")
+    sb.lci(root, "auto")
     check(sb.ok(root), "1. passing evidence: gate allows the next stage")
     check(sb.hook(GATE_HOOK, "git push origin main", root) is None, "1. hook allows git push with evidence")
     r = sb.lci(root, "run", "--name", "unit", "--", unit)
@@ -289,14 +298,14 @@ def scenario_evidence(sb: Sandbox) -> None:
 
     (root / "a.txt").write_text("three\n")
     (root / "new.txt").write_text("new\n")
-    sb.lci(root, "run", "--", "true")
+    sb.validate(root)
     sb.git(root, "add", "-A")
     sb.git(root, "commit", "-qm", "validated work")
     check(sb.ok(root), "validated uncommitted work, committed whole: valid")
 
     (root / "a.txt").write_text("four\n")
     (root / "b.txt").write_text("b\n")
-    sb.lci(root, "run", "--", "true")
+    sb.validate(root)
     sb.git(root, "commit", "-qam", "only a.txt")
     r = sb.lci(root, "gate")
     check(r.returncode == 1 and "untracked" in r.stdout,
@@ -308,12 +317,12 @@ def scenario_evidence(sb: Sandbox) -> None:
     (root / "a.txt").chmod(0o755)
     sb.git(root, "commit", "-qam", "mode")
     check(not sb.ok(root), "3. a mode change is a content change")
-    sb.lci(root, "run", "--", "true")
+    sb.validate(root)
     sb.git(root, "rm", "-q", "new.txt")
     sb.git(root, "commit", "-qm", "rm")
     check(not sb.ok(root), "3. a tracked deletion is a content change")
     (root / "link").symlink_to("a.txt")
-    sb.lci(root, "run", "--", "true")
+    sb.validate(root)
     sb.git(root, "add", "link")
     sb.git(root, "commit", "-qm", "link")
     check(sb.ok(root), "a validated symlink, committed, matches")
@@ -336,7 +345,7 @@ def scenario_evidence(sb: Sandbox) -> None:
     sb.git(sup, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "lib")
     sb.git(sup, "commit", "-qm", "sub")
     (sup / "lib" / "l.txt").write_text("edited\n")
-    sb.lci(sup, "run", "--", "true")
+    sb.validate(sup)
     check(not sb.ok(sup), "3. uncommitted content inside a submodule is not what HEAD publishes")
 
     fm = sb.repo("filemode", {"run.sh": "echo 1\n"})
@@ -344,7 +353,7 @@ def scenario_evidence(sb: Sandbox) -> None:
     sb.git(fm, "commit", "-qm", "exec")
     sb.git(fm, "config", "core.fileMode", "false")
     (fm / "run.sh").write_text("echo 2\n")
-    sb.lci(fm, "run", "--", "true")
+    sb.validate(fm)
     sb.git(fm, "commit", "-qam", "edit")
     check(sb.ok(fm), "core.fileMode=false: validated content keeps the index mode and stays valid")
 
@@ -578,12 +587,12 @@ def scenario_git_hooks(sb: Sandbox) -> None:
     check(r.returncode != 0, "LOCAL_CI_ENFORCE=1 enforces outside agent sessions")
     r = sb.git(root, "push", "-q", "origin", "main")
     check(r.returncode == 0, "human push (no CLAUDECODE) unaffected", r.stderr)
-    sb.lci(root, "run", "--", "true")
+    sb.validate(root)
     (root / "a").write_text("2\n")
     sb.git(root, "commit", "-qam", "two")
     r = sb.git(root, "push", "-q", "origin", "main", extra=agent)
     check(r.returncode != 0, "7. evidence for an older commit does not cover a newer one")
-    sb.lci(root, "run", "--", "true")
+    sb.validate(root)
     r = sb.git(root, "push", "-q", "origin", "main", extra=agent)
     check(r.returncode == 0, "agent push with evidence for the pushed commit accepted", r.stderr)
     sb.git(root, "switch", "-qc", "wip")
@@ -644,6 +653,10 @@ GATE_TABLE = [
     (None, "git push origin main", "v"),
     (None, 'bash -lc "git push origin main"', "v"),
     (None, "git push origin HEAD:refs/heads/topic", "v"),
+    (None, "git push origin main 2>&1 | tail -5", "v"),
+    (None, "git push origin main >/dev/null 2>&1", "v"),
+    (None, "git push 1>out origin main", "v"),
+    ("deny", "git push origin wip 2>&1", "v"),
     (None, "git push --dry-run", "u"),
     (None, "git push -n origin main", "u"),
     (None, "git push origin :old-branch", "u"),
@@ -667,7 +680,7 @@ def scenario_gate_table(sb: Sandbox) -> None:
     sb.git(valid, "commit", "-qam", "wip")
     sb.git(valid, "tag", "v0")
     sb.git(valid, "switch", "-q", "main")
-    sb.lci(valid, "run", "--", "true")
+    sb.validate(valid)
     for want, cmd, where in GATE_TABLE:
         cwd = valid if where == "v" else other
         got = sb.hook(GATE_HOOK, cmd.format(other=other, valid=valid), cwd)
@@ -680,7 +693,7 @@ def scenario_gate_table(sb: Sandbox) -> None:
     r = sb.run(["sh", str(GATE_HOOK)], other, stdin="not json push")
     check(r.returncode == 0 and not r.stdout.strip(), "unparseable payload: fails open silently")
 
-    sb.lci(other, "run", "--", "true")
+    sb.validate(other)
     sb.lci(other, "unsupported", "--name", "e2e", "--reason", "needs staging credentials")
     out = sb.hook_out(GATE_HOOK, "git push", other) or {}
     check("permissionDecision" not in out and "e2e" in out.get("additionalContext", ""),
@@ -715,6 +728,14 @@ def scenario_installer(sb: Sandbox) -> None:
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "git push"}, "cwd": str(repo)})
     r = sb.run(["sh", str(target / "hooks" / "local-ci-gate.sh")], repo, stdin=payload, extra={"LOCAL_CI_BIN": ""})
     check('"deny"' in r.stdout, "8. installed hook finds the installed local-ci and denies", r.stdout)
+    auto_hook = target / "hooks" / "local-ci-auto.sh"
+    sb.run(["sh", str(auto_hook), "start"], repo, stdin=json.dumps({"session_id": "inst", "cwd": str(repo)}),
+           extra={"LOCAL_CI_BIN": ""})
+    (repo / "a").write_text("2\n")
+    r = sb.run(["sh", str(auto_hook), "stop"], repo, stdin=json.dumps({"session_id": "inst", "cwd": str(repo)}),
+               extra={"LOCAL_CI_BIN": ""})
+    check('"block"' in r.stdout and f"{target}/bin/local-ci auto" in r.stdout,
+          "8. installed Stop hook finds the installed local-ci on its own", r.stdout)
     r = sb.run(["bash", str(REPO / "scripts" / "install.sh"), "--target", str(target)], REPO)
     check(r.returncode == 0 and "0 to add" in r.stdout, "8. re-running the dry run is idempotent", r.stdout[-200:])
 
@@ -727,12 +748,473 @@ def scenario_installer(sb: Sandbox) -> None:
           "8. an existing settings.json is never rewritten; a proposal is written beside it", r.stdout[-300:])
 
 
+# act stub for the automatic flow: the job comes from `-j`, a job listed in act.fail fails, the
+# matrix job reports one Linux leg passing and a macOS leg skipped, as act does.
+ACT_AUTO_STUB = """#!/bin/sh
+here=$(dirname "$0")
+if [ "$1" = "--version" ]; then echo "act version 0.2.97"; exit 0; fi
+if [ "$1" = "--help" ]; then echo "  --container-options-policy string"; exit 0; fi
+printf '%s\\n' "$*" >> "$here/act.argv"
+job=$(printf '%s\\n' "$*" | sed -n 's/.* -j \\([^ ]*\\) .*/\\1/p')
+if grep -qx "$job" "$here/act.skip" 2>/dev/null; then echo "[CI/$job] skipping: if condition false"; exit 0; fi
+if grep -qx "$job" "$here/act.edit" 2>/dev/null; then echo "edited by $job" >> edited-during-act.txt; fi
+name=$job; [ -f "$here/act.label.$job" ] && name=$(cat "$here/act.label.$job")
+if grep -qx "$job" "$here/act.fail" 2>/dev/null; then
+  echo "[CI/$job]   ❌  Failure - Main ./scripts/ci-only.sh"; echo "[CI/$job] 🏁  Job failed"; exit 1
+fi
+if [ "$job" = matrix ]; then
+  echo "[CI/matrix-1] 🏁  Job succeeded"; echo "[CI/matrix-2] Skipping unsupported platform -- Try running with -P macos-latest"
+  exit 0
+fi
+echo "[CI/$name] 🏁  Job succeeded"
+"""
+# npm stub: logs `npm run <script>`; a script named in npm.fail fails.
+NPM_STUB = """#!/bin/sh
+here=$(dirname "$0")
+printf '%s\\n' "$*" >> "$here/npm.argv"
+printf '%s %s\\n' "${PWD##*/}" "$*" >> "$here/npm.where"
+if grep -qx "$2" "$here/npm.fail" 2>/dev/null; then echo "npm: $2 failed"; exit 1; fi
+if grep -qx "$2" "$here/npm.edit" 2>/dev/null; then date > generated-report.txt; fi
+exit 0
+"""
+AUTO_YML = """name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/ci-only.sh
+  hidden:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+      - run: |
+          npm ci
+          ./scripts/ci-only.sh
+  matrix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - run: npm test
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./it.sh
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh api repos/o/r
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - run: docker build -t x .
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    needs: [unit]
+    steps:
+      - run: ./deploy.sh
+"""
+# a push without a filter runs it even though the pull_request filter does not match
+BOTH_YML = """on:
+  push:
+  pull_request:
+    paths: ['docs/**']
+jobs:
+  bothjob:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/ci-only.sh
+"""
+# a flow sequence over several lines
+FLOW_YML = """on:
+  pull_request:
+    paths: [
+      'src/**',
+      'lib/**'
+    ]
+jobs:
+  flowjob:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/ci-only.sh
+"""
+MANUAL_YML = """on: workflow_dispatch
+jobs:
+  manual:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/ci-only.sh
+"""
+NAMES_YML = """on: [pull_request]
+jobs:
+  node-20:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/ci-only.sh
+  fmt:
+    name: Lint / Format
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/ci-only.sh
+"""
+AUTO_HOOK = REPO / "hooks" / "local-ci-auto.sh"
+
+
+def scenario_auto(sb: Sandbox) -> None:
+    """Automatic flow: Stop asks for `local-ci auto` once per content, auto derives and runs the plan
+    (repository checks, then act jobs), and only the complete plan makes content publishable."""
+    sb.stub("act", ACT_AUTO_STUB)
+    sb.stub("npm", NPM_STUB)
+    sb.mode("docker", "up")
+    for f in ("act.argv", "act.fail", "act.skip", "act.edit", "npm.argv", "npm.where", "npm.fail", "npm.edit"):
+        (sb.stubs / f).unlink(missing_ok=True)
+
+    def lines(f: str) -> list[str]:
+        p = sb.stubs / f
+        return p.read_text().splitlines() if p.exists() else []
+
+    def session(action: str, root, sid: str = "s1", extra: dict | None = None, active: bool = False,
+                file: str | None = None) -> dict | None:
+        payload = json.dumps({"session_id": sid, "cwd": str(root), "hook_event_name": action.title(),
+                              "stop_hook_active": active, "tool_name": "Edit",
+                              "tool_input": {"file_path": file} if file else {}})
+        r = sb.run(["sh", str(AUTO_HOOK), action], root, stdin=payload, extra=extra)
+        return json.loads(r.stdout) if r.stdout.strip() else None
+
+    def jobs_run() -> list[str]:
+        return [c.split(" -j ")[1].split()[0] for c in lines("act.argv")]
+
+    # hidden: its real check sits behind a setup line; bothjob: push has no filter; flowjob: a flow
+    # sequence over several lines; matrix: not plain. manual (workflow_dispatch only) never runs.
+    JOBS = ["bothjob", "e2e", "flowjob", "hidden", "matrix"]
+    root = sb.repo("auto", {".github/workflows/ci.yml": AUTO_YML, ".github/workflows/release.yml": RELEASE_YML,
+                            ".github/workflows/docs.yml": DOCS_YML, ".github/workflows/both.yml": BOTH_YML,
+                            ".github/workflows/flow.yml": FLOW_YML, ".github/workflows/manual.yml": MANUAL_YML,
+                            "scripts/ci-only.sh": "true\n",
+                            "package.json": json.dumps({"scripts": {"lint": "eslint .", "test": "node t.js"}}),
+                            "src/x.js": "1\n"})
+    remote = sb.base / "auto-remote.git"
+    sb.git(sb.base, "init", "-q", "--bare", str(remote))
+    sb.git(root, "remote", "add", "origin", str(remote))
+    sb.git(root, "push", "-q", "origin", "main")
+    sb.git(root, "switch", "-qc", "feature")
+
+    check(session("start", root) is None, "SessionStart records a baseline silently")
+    check(session("stop", root) is None, "Stop when the session changed nothing: no request, no checks")
+    edit(root, 2)
+    out = session("stop", root) or {}
+    reason = out.get("reason", "")
+    check(out.get("decision") == "block" and f"{LOCAL_CI} auto" in reason,
+          "1-2. Stop after a change blocks once and asks for `local-ci auto` - no skill or user command", str(out))
+    check(not lines("npm.argv") and not lines("act.argv"), "12. the hooks never run a check themselves")
+    out = session("stop", root) or {}
+    check("decision" not in out and "not validated" in out.get("systemMessage", ""),
+          "the same unvalidated content is not blocked twice (no stop loop); the user is told once", str(out))
+    check(session("stop", root) is None, "...and after that the stop is silent")
+    check(sb.hook(GATE_HOOK, "git push origin feature", root) == "deny", "unvalidated content: push denied")
+
+    asked = re.search(r"`([^`]*/local-ci auto)`", reason)
+    cmd = asked.group(1) if asked else "false"  # exactly what the Stop hook asked for
+    r = sb.run(cmd.split(), root)
+    check(r.returncode == 0, "1. `local-ci auto` passes when every required check passes", r.stdout + r.stderr)
+    check(lines("npm.argv") == ["run lint", "run test"], "4. repository checks run, cheapest first",
+          str(lines("npm.argv")))
+    check(sorted(jobs_run()) == JOBS, "1/3. exactly the relevant, runnable, uncovered jobs run under act",
+          str(jobs_run()))
+    plan = json.loads(sb.lci(root, "plan", "--json").stdout)["validation"]
+    why = {x["name"]: x["reason"] for x in plan["unsupported"] + plan["skipped"] + plan["remote_only"]}
+    check("npm run test" in why.get("act:ci.yml:unit", ""),
+          "3. a plain job running the same command as a local check is not run twice", str(why))
+    check("API_KEY" in why.get("act:ci.yml:integration", "") and "GITHUB_TOKEN" in why.get("act:ci.yml:api", "")
+          and "Docker socket" in why.get("act:ci.yml:image", ""),
+          "9. credential-dependent and Docker-in-job jobs: unsupported, with the exact reason", str(why))
+    check(any(x["name"] == "act:ci.yml:deploy" for x in plan["remote_only"])
+          and any(x["name"] == "release.yml" for x in plan["remote_only"]),
+          "9. deploy job and release-only workflow: remote only, never run", str(plan["remote_only"]))
+    check("paths filter" in why.get("docs.yml", ""), "3. path filters: an unaffected workflow is skipped", str(why))
+    check("push or pull request" in why.get("manual.yml", ""), "a workflow_dispatch-only workflow is not required", str(why))
+    check(any(n.startswith("act:ci.yml:matrix") and "macOS" in r for n, r in why.items()),
+          "matrix legs act cannot run (macOS) are reported unverified, not hidden in the pass", str(why))
+    check(session("stop", root) is None, "Stop is silent once the content is validated")
+    sb.git(root, "add", "-A")
+    sb.git(root, "commit", "-qm", "feature")
+    out = sb.hook_out(GATE_HOOK, "git push origin feature", root) or {}
+    check("permissionDecision" not in out and "act:ci.yml:integration" in out.get("additionalContext", ""),
+          "10/11. validated, committed content: push allowed, unsupported jobs named", str(out))
+    r = sb.git(root, "push", "-q", "origin", "feature", extra={"CLAUDECODE": "1"})
+    check(r.returncode == 0, "the push reaches the local bare remote", r.stderr)
+
+    calls = len(lines("act.argv"))
+    r = sb.run(cmd.split(), root)
+    check(r.returncode == 0 and len(lines("act.argv")) == calls and len(lines("npm.argv")) == 2,
+          "12. rerunning auto on unchanged content runs nothing again", r.stdout)
+
+    edit(root, 3)
+    (sb.stubs / "act.fail").write_text("e2e\n")
+    session("start", root, sid="s2")
+    check(session("stop", root, sid="s2") is None, "a new session starts from the content it finds")
+    check((session("stop", root, sid="s1") or {}).get("decision") == "block",
+          "the same session is asked again for content it changed after validating")
+    r = sb.run(cmd.split(), root)
+    check(r.returncode == 1 and "FAIL" in r.stdout and "act:ci.yml:e2e" in r.stdout,
+          "4. a failing act job fails auto, named", r.stdout)
+    sb.git(root, "commit", "-qam", "broken")
+    check(sb.hook(GATE_HOOK, "git push origin feature", root) == "deny", "4. a failed required check blocks the push")
+    r = sb.lci(root, "unsupported", "--name", "npm run lint", "--reason", "convenient")
+    check(r.returncode == 1 and "required" in r.stderr, "7. a required, runnable check cannot be waived as unsupported",
+          r.stderr)
+
+    (sb.stubs / "act.fail").unlink()
+    edit(root, 4)  # the fix
+    before = len(lines("act.argv"))
+    r = sb.run(cmd.split(), root)
+    check(r.returncode == 0 and sorted(jobs_run()[before:]) == JOBS,
+          "5. the fixed content is revalidated locally, act jobs included", r.stdout)
+    edit(root, 5)
+    check(not json.loads(sb.lci(root, "status", "--json").stdout)["worktree"]["ok"], "6. an edit after validation is stale")
+
+    (sb.stubs / "npm.fail").write_text("lint\n")
+    before = len(lines("act.argv"))
+    r = sb.run(cmd.split(), root)
+    check(r.returncode == 1 and "deferred" in r.stdout and len(lines("act.argv")) == before,
+          "a failing local check defers the act jobs (minutes) until it passes", r.stdout)
+    (sb.stubs / "npm.fail").unlink()
+    sb.lci(root, "run", "--", "npm run lint")
+    st = json.loads(sb.lci(root, "status", "--json").stdout)["worktree"]
+    check(not st["ok"] and "npm run lint" in st["passes"] and any("act:ci.yml:e2e" in m for m in st["missing"]),
+          "7. every other check passing is not enough: a required act job that never ran still blocks", str(st))
+
+    sb.mode("docker", "down")
+    edit(root, 6)
+    r = sb.run(cmd.split(), root)
+    check(r.returncode == 0 and "Docker daemon is not running" in r.stdout and len(lines("act.argv")) == before,
+          "10. Docker down: act jobs reported unsupported, local checks still gate", r.stdout)
+    sb.git(root, "commit", "-qam", "no docker")
+    out = sb.hook_out(GATE_HOOK, "git push origin feature", root) or {}
+    check("permissionDecision" not in out and "act:ci.yml:e2e" in out.get("additionalContext", ""),
+          "10. the allowed push still names the jobs that could not run locally", str(out))
+    sb.mode("docker", "up")
+    (sb.stubs / "act").unlink()
+    edit(root, 7)
+    r = sb.run(cmd.split(), root)
+    check(r.returncode == 0 and "act is not installed" in r.stdout, "10. act missing: reported, never a pass", r.stdout)
+    st = json.loads(sb.lci(root, "status", "--json").stdout)["worktree"]
+    check(not any(p.startswith("act:") for p in st["passes"]), "10. unsupported act jobs are never counted as passes")
+
+    plain = sb.repo("auto-plain", {"package.json": json.dumps({"scripts": {"test": "node t.js"}}), "a.js": "1\n"})
+    session("start", plain)
+    (plain / "a.js").write_text("2\n")
+    out = session("stop", plain) or {}
+    calls = len(lines("act.argv"))
+    asked = re.search(r"`([^`]*/local-ci auto)`", out.get("reason", ""))
+    r = sb.run((asked.group(1) if asked else "false").split(), plain)
+    check(out.get("decision") == "block" and r.returncode == 0 and "act:" not in r.stdout,
+          "8. no workflows: the same automatic flow runs the repository's own checks, no act", r.stdout)
+    check(len(lines("act.argv")) == calls, "8. act is not needed without workflows")
+
+    shapes = sb.repo("auto-shapes", {".github/workflows/a.yml": "on: [\n  pull_request,\n  push\n]\njobs:\n  aj:\n"
+                                     "    runs-on: ubuntu-latest\n    steps:\n      - run: ./x.sh\n",
+                                     ".github/workflows/b.yml": "on:\n  push:\n    tags: ['v*']\n  pull_request:\n"
+                                     "    paths: ['docs/**']\njobs:\n  bj:\n    runs-on: ubuntu-latest\n"
+                                     "    steps:\n      - run: ./x.sh\n", "src/x.js": "1\n"})
+    sb.git(shapes, "switch", "-qc", "f")
+    (shapes / "src" / "x.js").write_text("2\n")
+    wfs = {w["file"]: w for w in json.loads(sb.lci(shapes, "plan", "--json").stdout)["workflows"]}
+    check(wfs["a.yml"]["event"] == "pull_request" and wfs["a.yml"]["relevant"],
+          "an `on:` list written over several lines is read", str(wfs["a.yml"]["triggers"]))
+    check(not wfs["b.yml"]["relevant"], "a tag-only push does not make a code change relevant", wfs["b.yml"]["relevance"])
+
+    gated = sb.repo("auto-gated", {".github/workflows/ci.yml": "on: [pull_request]\njobs:\n  gated:\n"
+                                   "    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n"
+                                   "    steps:\n      - run: ./ci.sh\n", "Makefile": "check:\n\ttrue\n"})
+    (sb.stubs / "act.skip").write_text("gated\n")
+    sb.stub("make", "#!/bin/sh\nexit 0\n")
+    sb.stub("act", ACT_AUTO_STUB)
+    calls = len(lines("act.argv"))
+    r = sb.lci(gated, "auto")
+    check(len(lines("act.argv")) == calls + 1, "the gated job was handed to act")
+    st = json.loads(sb.lci(gated, "status", "--json").stdout)["worktree"]
+    check(r.returncode == 0 and st["ok"] and any(u["name"] == "act:ci.yml:gated" for u in st["unsupported"]),
+          "a required job act did not run (its `if:` is false here) is reported unverified, not a permanent block",
+          r.stdout + str(st))
+    (sb.stubs / "act.skip").unlink()
+    (sb.stubs / "make").unlink()
+
+    py = sb.repo("auto-py", {"pyproject.toml": '[project]\nname = "x"\n[tool.ruff]\n', "uv.lock": ""})
+    plan = json.loads(sb.lci(py, "plan", "--json").stdout)["validation"]
+    check(not plan["required"] and any("uv" in u["reason"] for u in plan["unsupported"]),
+          "a check whose tool is not installed is unsupported, not required and never a pass", str(plan))
+
+    session("start", root, sid="s3")
+    edit(root, 9)
+    off = session("stop", root, sid="s3", extra={"LOCAL_CI_AUTO": "0"})
+    check(off is None and (session("stop", root, sid="s3") or {}).get("decision") == "block",
+          "LOCAL_CI_AUTO=0 turns the automatic request off (and only it)")
+    outside = sb.base / "auto-outside"
+    outside.mkdir()
+    check(session("stop", outside, sid="s-out") is None, "outside a git repository: nothing")
+    r = sb.run(["sh", str(AUTO_HOOK), "stop"], root, stdin="not json")
+    check(r.returncode == 0 and not r.stdout.strip(), "unparseable payload: fails open silently")
+
+    # job names: an id ending in -digits, a display name with a slash; then act editing the tree
+    names = sb.repo("auto-names", {".github/workflows/ci.yml": NAMES_YML, "scripts/ci-only.sh": "true\n",
+                                   "Makefile": "check:\n\ttrue\n"})
+    (sb.stubs / "act.label.fmt").write_text("Lint / Format")
+    sb.stub("make", "#!/bin/sh\n[ -e \"$(dirname \"$0\")/make.fail\" ] && exit 1\nexit 0\n")
+    r = sb.lci(names, "auto")
+    st = json.loads(sb.lci(names, "status", "--json").stdout)["worktree"]
+    check(r.returncode == 0 and {"act:ci.yml:node-20", "act:ci.yml:fmt"} <= set(st["passes"]),
+          "a job id ending in -digits and a job name with a slash are recognised as passing", r.stdout)
+    (names / "a.txt").write_text("1\n")
+    (sb.stubs / "act.edit").write_text("node-20\n")
+    before_fp = json.loads(sb.lci(names, "status", "--json").stdout)["worktree"]["fp"]
+    sb.lci(names, "auto")
+    (names / "edited-during-act.txt").unlink()
+    (sb.stubs / "act.edit").unlink()
+    st = json.loads(sb.lci(names, "status", "--json").stdout)["worktree"]
+    check(st["fp"] == before_fp and not st["ok"] and "act:ci.yml:node-20" in st["blocking"],
+          "a tree changed during an act job: its result is not evidence for the content it started from", str(st))
+    (names / ".actrc").write_text("-P ubuntu-latest=-self-hosted\n")
+    calls = len(lines("act.argv"))
+    r = sb.lci(names, "auto")
+    check(len(lines("act.argv")) == calls and "will not start act here" in r.stdout,
+          "9. auto refuses act for a repository .actrc too: unsupported, act never started", r.stdout)
+    (names / ".actrc").unlink()
+    (names / "a.txt").write_text("2\n")
+    (sb.stubs / "make.fail").write_text("")
+    sb.lci(names, "auto")  # the plan requires both jobs; act is deferred behind the failing check
+    (sb.stubs / "make.fail").unlink()
+    sb.lci(names, "run", "--", "make check")
+    sb.mode("docker", "down")
+    sb.lci(names, "act")  # act unavailable now: recorded unsupported, but the plan still requires the jobs
+    sb.mode("docker", "up")
+    st = json.loads(sb.lci(names, "status", "--json").stdout)["worktree"]
+    check(not st["ok"] and any("node-20" in m for m in st["missing"]),
+          "an unavailable `local-ci act` does not stand in for a required job the plan says can run", str(st))
+    (sb.stubs / "act.label.fmt").unlink()
+
+    # cheapest first across stacks, and a check that rewrites the tree during auto
+    order = sb.repo("auto-order", {"package.json": json.dumps({"scripts": {"test": "node t.js"}}),
+                                   "Makefile": "lint:\n\ttrue\n", "a.js": "1\n"})
+    sb.stub("make", "#!/bin/sh\nprintf 'make %s\\n' \"$*\" >> \"$(dirname \"$0\")/npm.argv\"\nexit 0\n")
+    before = len(lines("npm.argv"))
+    r = sb.lci(order, "auto", "--plan-only")
+    check(len(lines("npm.argv")) == before and not json.loads(sb.lci(order, "status", "--json").stdout)["worktree"]["planned"],
+          "auto --plan-only runs and records nothing", r.stdout)
+    sb.lci(order, "auto")
+    check(lines("npm.argv")[before:] == ["make lint", "run test"], "4. cheapest first across stacks (lint before test)",
+          str(lines("npm.argv")[before:]))
+    (order / "a.js").write_text("2\n")
+    (sb.stubs / "npm.edit").write_text("test\n")
+    r = sb.lci(order, "auto")
+    check(r.returncode == 1 and "modified the tree" in r.stdout, "a check that rewrites the tree leaves auto NOT VALIDATED",
+          r.stdout)
+    (sb.stubs / "npm.edit").unlink()
+    (sb.stubs / "make").unlink()
+
+    # monorepo: a manifest below the root, only where the change is; never fixtures, vendored code
+    mono = sb.repo("auto-mono", {"web/package.json": json.dumps({"scripts": {"test": "x"}}), "web/a.js": "1\n",
+                                 "api/package.json": json.dumps({"scripts": {"lint": "x"}}), "api/b.js": "1\n",
+                                 "tests/fixtures/package.json": json.dumps({"scripts": {"test": "x"}}),
+                                 "vendor/lib/package.json": json.dumps({"scripts": {"test": "x"}})})
+    (mono / "web" / "a.js").write_text("2\n")
+    (mono / "tests" / "fixtures" / "package.json").write_text(json.dumps({"scripts": {"test": "y"}}))
+    (mono / "vendor" / "lib" / "package.json").write_text(json.dumps({"scripts": {"test": "y"}}))
+    plan = json.loads(sb.lci(mono, "plan", "--json").stdout)["validation"]
+    labels = [r["label"] for r in plan["required"]]
+    check(labels == ["npm run test [in web]"], "monorepo: the changed package's own checks are required, in its directory",
+          str(labels))
+    before = len(lines("npm.where"))
+    r = sb.lci(mono, "auto")
+    check(r.returncode == 0 and lines("npm.where")[before:] == ["web run test"], "monorepo: auto runs them there", r.stdout)
+    r = sb.run(["sh", "-c", f"cd web && {sys.executable} {LOCAL_CI} run -- npm run test && {sys.executable} {LOCAL_CI} "
+                            "status --json"], mono)
+    check(json.loads(r.stdout[r.stdout.index("{"):])["worktree"]["ok"],
+          "a manual `local-ci run -- npm run test` (unquoted) in the package is the plan's check", r.stdout[-300:])
+    shutil.rmtree(mono / "api")
+    r = sb.lci(mono, "auto")
+    check("Traceback" not in r.stderr, "a deleted package directory does not crash auto", r.stderr[-300:])
+
+    # the Stop hook beyond the session's own directory, and loop bounds
+    far = sb.repo("auto-far", {"package.json": json.dumps({"scripts": {"test": "x"}}), "a.js": "1\n"})
+    lobby = sb.base / "auto-lobby"
+    lobby.mkdir()
+    session("start", lobby, sid="s5")
+    before = len(lines("npm.argv"))
+    session("touch", lobby, sid="s5", file=str(far / "a.js"))
+    check(len(lines("npm.argv")) == before, "12. the per-edit hook only records a baseline; it runs no check")
+    (far / "a.js").write_text("2\n")
+    out = session("stop", lobby, sid="s5") or {}
+    check(out.get("decision") == "block" and str(far) in out.get("reason", ""),
+          "a repository edited from a session started outside it is still asked to validate", str(out))
+    moved = sb.repo("auto-moved", {"package.json": json.dumps({"scripts": {"test": "x"}}), "a.js": "1\n"})
+    (moved / "a.js").write_text("2\n")
+    check(session("stop", moved, sid="s6") is None,
+          "a repository the session only visited (the user's own changes in it) is never held")
+    sb.git(moved, "commit", "-qam", "published")
+    sb.git(sb.base, "init", "-q", "--bare", str(sb.base / "moved-remote.git"))
+    sb.git(moved, "remote", "add", "origin", str(sb.base / "moved-remote.git"))
+    session("start", moved, sid="s8")
+    sb.git(moved, "push", "-q", "origin", "main")
+    sb.git(moved, "switch", "-qc", "other")
+    (moved / "b.js").write_text("1\n")
+    sb.git(moved, "add", "b.js")
+    sb.git(moved, "commit", "-qm", "b")
+    sb.git(moved, "push", "-q", "origin", "other")
+    check(session("stop", moved, sid="s8") is None,
+          "content the session only checked out, already on a remote branch, is never held")
+    sb.git(moved, "switch", "-q", "main")
+    session("start", moved, sid="s7")
+    held = []
+    for n in range(5):
+        (moved / "a.js").write_text(f"churn {n}\n")
+        held.append((session("stop", moved, sid="s7", active=n > 0) or {}).get("decision") == "block")
+    check(held == [True, True, True, False, False], "content that changes on every run cannot hold stops forever", str(held))
+    (moved / "a.js").write_text("fresh\n")
+    check((session("stop", moved, sid="s7") or {}).get("decision") == "block",
+          "...and a new user turn is asked again")
+
+    settings = json.loads((REPO / "config" / "settings.example.json").read_text())
+    hooks = {ev: [h["command"] for e in entries for h in e["hooks"]] for ev, entries in settings["hooks"].items()}
+    check(any("local-ci-auto.sh start" in c for c in hooks.get("SessionStart", []))
+          and any("local-ci-auto.sh stop" in c for c in hooks.get("Stop", [])),
+          "2. the settings wire the automatic trigger: no per-repository setup, no skill to remember")
+    wired = sorted((ev, e.get("matcher", ""), h["command"].rsplit("/", 1)[-1]) for ev, entries in settings["hooks"].items()
+                   for e in entries for h in e["hooks"] if "local-ci" in h["command"])
+    check(wired == [("PreToolUse", "Bash", "local-ci-gate.sh"), ("PreToolUse", "Edit|Write|MultiEdit|NotebookEdit",
+                                                                 "local-ci-auto.sh touch"),
+                    ("SessionStart", "", "local-ci-auto.sh start"), ("Stop", "", "local-ci-auto.sh stop")],
+          "12. local-ci hooks: the push gate, a baseline per edited repository, start and stop - no check per edit",
+          str(wired))
+    sb.stub("act", ACT_STUB)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="local-ci-test-") as tmp:
         sb = Sandbox(pathlib.Path(tmp).resolve())
         sb.stub("gh", GH_STUB)
         for scenario in (scenario_evidence, scenario_act, scenario_stacks, scenario_git_hooks,
-                         scenario_gate_table, scenario_installer):
+                         scenario_gate_table, scenario_installer, scenario_auto):
             if VERBOSE:
                 print((scenario.__doc__ or "").splitlines()[0])
             try:

@@ -176,13 +176,14 @@ are not goals.
 
 ## Local-first CI
 
-- Remote CI is final verification, not a debugger. Before a push, a PR or a
-  remote workflow run, the full gate from Quality gates runs locally, recorded with
-  `~/.claude/bin/local-ci run` for the exact content published (the
-  `local-ci-gate` hook denies publishing without it; procedure, act and CI cost:
-  the `local-ci` skill).
-- Never push a speculative fix to see whether CI passes: reproduce a remote
-  failure locally, fix, revalidate, push once. A check that cannot run here is
+- Remote CI is final verification, not a debugger. Local validation is
+  automatic: after changing a repository, run `~/.claude/bin/local-ci auto`
+  (a Stop hook asks for it), which derives the validation plan (the repository's
+  own checks, then the affected GitHub Actions jobs under act) and runs it. The
+  `local-ci-gate` hook denies publishing until every required check passed for
+  the exact content published (procedure and CI cost: the `local-ci` skill).
+- Fix failures locally and rerun `local-ci auto` until it passes; never push a
+  speculative fix to see whether CI passes. A check that cannot run here is
   reported unverified, never passed; a passing `act` run is partial evidence.
 
 ## Review

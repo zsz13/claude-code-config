@@ -305,20 +305,51 @@ and untracked, non-ignored file (path, mode, git blob id, computed without
 writing to the repository). Committing exactly what was validated keeps the
 evidence; any later edit, or a partial commit, makes it stale. That makes "it
 passed earlier" impossible to reuse by accident, and it lets an unchanged check
-be skipped instead of rerun. What the gate proves is deliberately narrow:
-exactly this content has recorded passing evidence and no unresolved failure.
-Which checks count as the repository's required gate is not knowable from
-outside the repository, so that stays policy (the skill's order, the report
-naming what ran). Commits are not gated: they are local and cost nothing, and
-gating them would punish the small, frequent commits that make review easier.
+be skipped instead of rerun. Commits are not gated: they are local and cost
+nothing, and gating them would punish the small, frequent commits that make
+review easier.
+
+**A plan, not "some check passed".** The first version allowed a push when at
+least one check had passed and none had failed. That proves nothing about the
+checks that were never run: one passing `true` covered a repository with a
+failing test suite it never touched. `local-ci auto` now derives a validation
+plan — every check command the repository's own configuration names, and every
+affected GitHub Actions job — and records it for the content. Each item is
+*required* (it can run here, so it must pass), *unsupported* (its tool, Docker,
+act or a secret is missing; reported with the exact reason, never a pass),
+*skipped* (a path filter or an established equivalent says it adds nothing
+here, with the reason), or *remote only* (a deploy, release or publish job).
+The gate requires a recorded plan and every required item passing. The plan is
+derived, not chosen, so a narrower one cannot be picked to get a green result,
+and a required check cannot be relabelled unsupported. What it still cannot
+know is a check the repository runs but does not declare anywhere a tool can
+read (a README instruction); the report names what ran.
 
 **Why a deny hook here, when most of this setup prefers instructions.** The
 trigger is not semantic: `git push` and `gh pr create` are recognisable, and the
 question asked at that moment — "has this content passed?" — has a deterministic
 answer on disk. A hook is the right tool exactly when both hold (see
 [Why instructions rather than hooks](#why-instructions-rather-than-hooks)). What
-remains semantic — *which* checks are relevant, whether act adds anything —
-stays in the skill and `CLAUDE.md`.
+remains semantic — fixing a failure, telling the user when a required check
+cannot pass here — stays with the agent, the skill and `CLAUDE.md`.
+
+**Why a Stop hook makes it automatic, and why it only asks.** A gate at the push
+starts validation only when a push is attempted, and an instruction to validate
+"before completion" is exactly what gets forgotten. The moment a turn ends is
+deterministic, and so is the question asked there: did this session change the
+repository, and is that content validated? `local-ci-auto.sh` records the
+content at `SessionStart` (and before the first edit of any other repository)
+and, at `Stop`, holds the end of the turn once when both answers say so, with
+one instruction: run `local-ci auto`. It deliberately
+does not run the checks itself: a hook cannot show the agent a failing log to
+fix, an act job can outlast any sensible hook timeout, and a hook that runs
+checks at every turn end is a hook that recurses into its own work. It holds a
+stop at most once per content state — the next stop for unchanged content
+passes, with one line to the user — and at most three times in a row within a
+user turn, so neither a check the agent cannot fix nor one that rewrites a file
+on every run produces a loop; it produces a report. A turn that changed nothing is never held. Checks run once
+per batch of edits (at the end of the turn), never per edit, and evidence for
+unchanged content is reused.
 
 **Why text-matching is not the whole answer.** A PreToolUse hook reads command
 text. It looks through wrappers (`sh -c`, `sudo`, `env`, `timeout`, `$(…)`,
@@ -333,14 +364,20 @@ repository's own hooks; the no-verify guard denies setting it for that reason.
 The pre-push gate enforces only in agent sessions (`CLAUDECODE`), so it never
 changes how the owner pushes.
 
-**Why act, and why only sometimes.** Some checks exist only in a workflow file:
-a matrix leg, a service container, a script nothing else calls. nektos/act runs
-those jobs from the workflow itself, so nothing is duplicated. But a job that
-runs `npm test` is cheaper as `npm test`, act's images approximate GitHub's
-runners, and a job that needs secrets cannot run honestly at all. So act is used
-where it adds evidence, never required where the repository has no workflows,
-never handed a token, `.env` or Docker socket, and never allowed near a deploy,
-release or publish job. Its environment failures (no daemon, image pull, clone)
+**Why act runs by default, and when it does not.** Some checks exist only in a
+workflow file: a matrix leg, a service container, a script nothing else calls.
+nektos/act runs those jobs from the workflow itself, so nothing is duplicated,
+and `auto` runs every affected, runnable job under act by default. It skips a
+job only when equivalence is established: a *plain* job (setup actions and run
+steps only; no matrix, container, services, env, working directory or shell
+that could change a command's meaning) whose every check command is the same
+command line as a local check that is already required. Anything less and the
+job runs under act as well. act is never required where the repository has no
+workflows, never handed a token, `.env` or Docker socket, and never allowed
+near a deploy, release or publish job; a job that needs the Docker socket or a
+GitHub token is reported unsupported rather than run to a guaranteed failure.
+act jobs run after the repository's own checks pass, because they cost minutes
+and a lint failure would make their result moot. Its environment failures (no daemon, image pull, clone)
 are recorded as *unsupported*, never as a test failure and never as a pass; a
 failed step is never relabelled environmental.
 

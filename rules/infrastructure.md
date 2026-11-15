@@ -32,4 +32,4 @@ paths:
 - Workflow triggers, concurrency, path filters, caching and tiering decide what
   remote CI costs; the checklist is in the `local-ci` skill. Never save minutes
   with `[skip ci]`, a disabled required check, or a branch-protection change.
-  Test a workflow change with `local-ci act` before pushing it.
+  A workflow change is run locally by `local-ci auto` (the affected jobs, under act) before it is pushed.

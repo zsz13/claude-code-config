@@ -22,6 +22,7 @@ Allowed with no decision: everything else, a command outside a git work tree, an
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -114,6 +115,9 @@ def gh_publish(args: list[str]) -> str | None:
 def targets(cmd: str, sg, depth: int = 0) -> list[tuple[str, str, list[str]]]:
     """(label, directory, revs) for every publishing command in a shell command line."""
     code, scripts, _ = sg.scan(cmd)
+    # The scanner keeps a redirect's file descriptor (`2>&1`, `1>out`) as an argument, where it would
+    # read as a refspec; a number attached to `<`/`>` at the start of a word is never one.
+    code = re.sub(r"(?<![^\s;&|()])\d+(?=[<>])", "", code)
     out = []
     for script in scripts if depth < 3 else []:
         out += targets(script, sg, depth + 1)
@@ -209,11 +213,11 @@ def main() -> None:
             emit(permissionDecision="deny", permissionDecisionReason=(
                 f"Blocked: `{label}` publishes work or starts remote CI, and local validation has not passed "
                 f"for the content it would publish - {'; '.join(lines)}. Remote CI is final verification, not "
-                "a debugger. Run `~/.claude/bin/local-ci plan`, record the relevant checks with "
-                "`~/.claude/bin/local-ci run -- <check>` (and `local-ci act` for workflow jobs worth running "
-                "locally), fix failures, commit exactly what was validated, then retry. A check that cannot run "
-                "here: `local-ci unsupported --name <check> --reason <why>` and report it. If the user explicitly "
-                "wants to publish without local validation, they run the command themselves. (local-ci-gate)"))
+                f"a debugger. Run `{LOCAL_CI} auto` in that repository: it derives the validation plan (the "
+                "repository's own checks, then the affected GitHub Actions jobs under act) and runs every required "
+                "check that has not passed for this content. Fix failures and rerun it until it exits 0, commit "
+                "exactly what was validated, then retry once. If the user explicitly wants to publish without local "
+                "validation, they run the command themselves. (local-ci-gate)"))
             return
         for r in res.get("revs", []):
             for u in r.get("unsupported", []):
