@@ -10,6 +10,8 @@ Usage: python3 scripts/test_local_ci.py [-v]
 Exit:  0 = every check held, 1 = at least one did not.
 """
 import hashlib
+import importlib.machinery
+import importlib.util
 import json
 import os
 import pathlib
@@ -1534,7 +1536,7 @@ def scenario_capabilities(sb: Sandbox) -> None:
     (logs / "cap.log").write_text(act_log("unit", ("Main ./ci/unit.sh", NO_DOCKER), ("Post setup", NO_NODE)))
     (logs / "real.log").write_text(act_log("lint", ("Main ./ci/lint.sh", "  | error: 3 problems\n")))
     with ledger.open("a") as fh:  # probe: by the current classifier; db: a timeout - neither is reread
-        for job, log, extra in (("unit", "cap.log", {}), ("lint", "real.log", {}), ("probe", "cap.log", {"classifier": 2}),
+        for job, log, extra in (("unit", "cap.log", {}), ("lint", "real.log", {}), ("probe", "cap.log", {"classifier": 3}),
                                 ("db", "cap.log", {"exit": 124})):
             fh.write(json.dumps({"ts": time.time() - 60, "fp": fp, "name": f"act:ci.yml:{job}", "kind": "act",
                                  "status": "fail", "detail": "old", "exit": 1, "log": str(logs / log),
@@ -1569,13 +1571,292 @@ def scenario_capabilities(sb: Sandbox) -> None:
     edit(root, 6)
     check(not status()["ok"], "changed content invalidates the earlier validation")
 
+    # A setup action's post-job cache save fails under act (act's cache server, act's work-tree volume):
+    # unsupported. A check failing next to it, another error in it, or another action's post step: a failure.
+    for n, (out, unsupported, what) in enumerate([
+            (act_log("lint", ("Main actions/setup-node@v4", None), ("Main ./ci/lint.sh", None),
+                     ("Post actions/setup-node@v4", CACHE_SAVE_ERR)), True,
+             "only a setup action's post-job cache save failed: unsupported, neither a failure nor a pass"),
+            *[(act_log("lint", ("Main ./ci/lint.sh", None), (step, f"  ❗  ::error::{msg}\n")), True,
+               f"`{step}` failing only with `{msg[:30]}...`: unsupported")
+              for step, msg in (("Post actions/cache@v4", "getCacheEntry failed: connect ETIMEDOUT 10.0.0.1:1"),
+                                ("Post astral-sh/setup-uv@v6", "reserveCache failed: connect ECONNREFUSED"),
+                                ("Post actions/setup-python@v5", "Cache service responded with 503"),
+                                ("Post ruby/setup-ruby@v1", "Unable to reserve cache with key x"))],
+            (act_log("lint", ("Main actions/setup-node@v4", None), ("Main ./ci/lint.sh", "  | error: 3 problems\n"),
+                     ("Post actions/setup-node@v4", CACHE_SAVE_ERR)), False,
+             "a failing check next to a failed cache save: a failure, and it blocks"),
+            (act_log("lint", ("Main ./ci/lint.sh", None),
+                     ("Post actions/setup-node@v4", CACHE_SAVE_ERR + "  ❗  ::error::Unexpected input 'cache-dir'\n")),
+             False, "another error in the same post step: a failure"),
+            (act_log("lint", ("Main ./ci/lint.sh", None),
+                     ("Post actions/setup-node@v4", CACHE_SAVE_ERR.rstrip("\n") + " 3 tests failed\n")), False,
+             "a failure riding on the same line as the cache-save signature: a failure"),
+            (act_log("lint", ("Main ./ci/lint.sh", None), ("Post my-org/report@v1", CACHE_SAVE_ERR)), False,
+             "the cache message from an action that is not a setup/cache action: a failure"),
+            (act_log("lint", ("Main actions/setup-node@v4", CACHE_SAVE_ERR), ("Main ./ci/lint.sh", None)), False,
+             "the cache message in a Main step (a cache misconfiguration GitHub rejects too): a failure")], start=50):
+        edit(root, n)
+        act_out("lint", out)
+        r = sb.lci(root, "act", "--job", "lint")
+        st, u = status(), unverified()
+        if unsupported:
+            check("cache save" in u.get("act:ci.yml:lint", "") and "act:ci.yml:lint" not in st["blocking"] + st["passes"],
+                  what, r.stdout + str(u))
+        else:
+            check(r.returncode == 1 and "act:ci.yml:lint" in st["blocking"], what, r.stdout)
+
+    edit(root, 60)
+    act_out("lint", None)
+    fp = status()["fp"]
+    (logs / "cache.log").write_text(act_log("lint", ("Main ./ci/lint.sh", None),
+                                            ("Post actions/setup-node@v4", CACHE_SAVE_ERR)))
+    with ledger.open("a") as fh:
+        fh.write(json.dumps({"ts": time.time() - 60, "fp": fp, "name": "act:ci.yml:lint", "kind": "act",
+                             "status": "fail", "detail": "old", "exit": 1, "log": str(logs / "cache.log"),
+                             "cmd": "event=pull_request", "classifier": 2}) + "\n")
+    r = sb.lci(root, "auto")
+    check("act:ci.yml:lint: recorded fail -> unsupported" in r.stdout and "cache save" in r.stdout
+          and "act:ci.yml:lint" not in status()["blocking"],
+          "a cache-save failure recorded by the previous classifier is reread from its log, visibly", r.stdout)
+
+
+CACHE_SAVE_ERR = ("  ❗  ::error::Path Validation Error: Path(s) specified in the action for caching do(es) not exist, "
+                  "hence no cache is being saved.\n")
+# uv stub: `uv --version` reports uv.version; every other call is logged with who started it (the
+# repository's toolchain sets TOOLCHAIN=1) and fails when its arguments are listed in uv.fail.
+UV_STUB = """#!/bin/sh
+here=$(dirname "$0")
+if [ "$1" = "--version" ]; then echo "uv $(cat "$here/uv.version") (stub)"; exit 0; fi
+printf '%s %s\\n' "${TOOLCHAIN:-host}" "$*" >> "$here/uv.argv"
+if grep -qx "$*" "$here/uv.fail" 2>/dev/null; then echo "uv stub: $* failed"; exit 1; fi
+exit 0
+"""
+DISCOVERY_FILES = {
+    "compose.yaml": ("services:\n  api:\n    build:\n      context: ./api   # the image's own directory\n"
+                     "      dockerfile: Dockerfile.prod\n  web:\n    build: ./web\n  db:\n    image: postgres:17\n"
+                     "  shared:\n    build:\n      context: .\n      dockerfile: shared/Dockerfile\n"),
+    "shared/Dockerfile": "FROM scratch\nCOPY shared.txt /\n", "shared/shared.txt": "x\n",  # compose says: root
+    "requirements.txt": "root copy\n",  # tools/ has one too: its own directory still wins
+    "main.tf": "terraform {}\n",  # terraform is not installed in the sandbox: unsupported here
+    "compose.ipqs.yaml": "services:\n  api:\n    environment:\n      KEY_FILE: /run/secrets/k\n",
+    "api/Dockerfile.prod": "FROM scratch\nCOPY main.py /\n", "api/main.py": "print(1)\n",
+    "web/Dockerfile": "FROM scratch\nCOPY nginx.conf /etc/\n", "web/nginx.conf": "events {}\n",
+    "tools/Dockerfile": "FROM scratch\nCOPY --chown=1:1 requirements.txt \\\n  ./\n", "tools/requirements.txt": "x\n",
+    # yarn.lock* matches nothing anywhere: an optional wildcard, which must not decide the context
+    "docker/Dockerfile.app": "FROM node AS b\nCOPY src/ yarn.lock* /app/\nFROM scratch\nCOPY --from=b /app /app\n",
+    "src/index.js": "1\n",
+    "backend/pyproject.toml": ('[project]\nname = "b"\n[dependency-groups]\ndev = ["ruff", "pytest"]\n'
+                               '[tool.uv]\nrequired-version = ">=0.13.5"\n'),
+    "backend/uv.lock": "", "backend/tests/test_x.py": "def test_x():\n    pass\n",
+    "Makefile": ("BACKEND := cd backend && TOOLCHAIN=1\n\nlint:\n\t$(BACKEND) uv run ruff check .\n\n"
+                 "test:\n\t$(BACKEND) uv run pytest -q -m 'not live'\n"),
+}
+
+
+def scenario_discovery(sb: Sandbox) -> None:
+    """Discovery derives the check the repository actually uses: compose overrides merged onto their
+    base, image builds from their own context, `uv run` checks only under a uv the project accepts;
+    failures of checks only an older, incorrect plan required stop blocking, genuine ones never do."""
+    sb.stub("docker", DOCKER_STUB)
+    sb.stub("uv", UV_STUB)
+    sb.mode("docker", "up")
+    make = shutil.which("make")
+    if make and not (sb.stubs / "make").exists():
+        (sb.stubs / "make").symlink_to(make)
+    for f in ("uv.argv", "uv.fail"):
+        (sb.stubs / f).unlink(missing_ok=True)
+    (sb.stubs / "uv.version").write_text("0.12.10")
+    # The base branch already pins required-version; every other file below is the change being validated.
+    root = sb.repo("disc", {"README.md": "x\n", "backend/pyproject.toml": DISCOVERY_FILES["backend/pyproject.toml"]})
+    sb.git(root, "switch", "-qc", "feature")
+    for rel, text in DISCOVERY_FILES.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    sb.git(root, "add", "-A")
+    sb.git(root, "commit", "-qm", "feature")
+
+    def plan() -> dict:
+        return json.loads(sb.lci(root, "plan", "--json").stdout)["validation"]
+
+    def status() -> dict:
+        return json.loads(sb.lci(root, "status", "--json").stdout)["worktree"]
+
+    def host_uv() -> list[str]:
+        p = sb.stubs / "uv.argv"
+        return [x for x in (p.read_text().splitlines() if p.exists() else []) if x.startswith("host ")]
+
+    p = plan()
+    req = {r["label"] for r in p["required"]}
+    why = {u["name"]: u["reason"] for u in p["unsupported"]}
+    check({"docker compose -f compose.yaml config -q", "docker compose -f compose.yaml -f compose.ipqs.yaml config -q"}
+          <= req and "docker compose -f compose.ipqs.yaml config -q" not in req,
+          "a compose override is validated merged onto the base file, never alone", str(sorted(req)))
+    check({"docker build -f api/Dockerfile.prod api", "docker build -f web/Dockerfile web",
+           "docker build -f tools/Dockerfile tools", "docker build -f docker/Dockerfile.app ."} <= req,
+          "image builds use the context compose declares, else the Dockerfile's own directory, else the root when "
+          "only the root holds what it copies", str(sorted(req)))
+    check("docker build -f shared/Dockerfile ." in req and "docker build -f shared/Dockerfile shared" not in req,
+          "a context compose declares wins over the Dockerfile's own directory", str(sorted(req)))
+    lone = sb.repo("disc-lone", {"docker-compose.test.yml": "services:\n  t:\n    image: alpine\n"})
+    cmds = [c for s in json.loads(sb.lci(lone, "plan", "--json").stdout)["checks"] for c in s["commands"]]
+    check("docker compose -f docker-compose.test.yml config -q" in cmds,
+          "a compose file with no base file to merge onto is validated alone", str(cmds))
+
+    gap = why.get("uv run pytest -q [in backend]", "")
+    check("uv 0.12.10" in gap and "'>=0.13.5'" in gap and "backend/pyproject.toml" in gap
+          and "uv run pytest -q [in backend]" not in req and "uv run ruff check . [in backend]" in why,
+          "`uv run` checks under a uv the project's required-version rejects: unsupported, the versions named", str(why))
+    check(make is None or ("`make test` runs pytest through the repository's own toolchain" in gap
+                           and "`make lint`" in why["uv run ruff check . [in backend]"]),
+          "...and the required Makefile targets running the same tool through the project's toolchain are named", gap)
+    r = sb.lci(root, "auto")
+    st = status()
+    check(r.returncode == 0 and st["ok"] and not host_uv() and "uv run pytest -q [in backend]" in
+          {u["name"] for u in st["unsupported"]},
+          "auto passes on the project's own checks, never runs the rejected host uv, and reports what it could not run",
+          r.stdout + str(host_uv()))
+
+    # The change itself sets the required-version the host uv misses: its checks stay required (they
+    # fail when uv refuses), so a change cannot make its own checks unsupported.
+    pyproject = root / "backend" / "pyproject.toml"
+    pyproject.write_text(pyproject.read_text().replace(">=0.13.5", ">=99"))
+    p = plan()
+    check("uv run pytest -q [in backend]" in {r["label"] for r in p["required"]}
+          and "uv run pytest -q [in backend]" not in {u["name"] for u in p["unsupported"]},
+          "a required-version added or changed by the change itself keeps its uv checks required",
+          str(p["unsupported"]))
+    sb.git(root, "checkout", "--", "backend/pyproject.toml")
+
+    # A uv the project accepts: the same checks are required again, and a genuine failure blocks.
+    (sb.stubs / "uv.version").write_text("0.13.5")
+    (sb.stubs / "uv.fail").write_text("run pytest -q\n")
+    edit(root, 1)
+    r = sb.lci(root, "auto")
+    st = status()
+    check(r.returncode == 1 and "uv run pytest -q [in backend]" in st["blocking"] and bool(host_uv()),
+          "with a uv that satisfies required-version (the boundary 0.13.5) the check runs, and its failure blocks",
+          r.stdout)
+    (sb.stubs / "uv.fail").unlink()
+    (sb.stubs / "uv.version").write_text("0.12.10")
+
+    # Failures recorded under an older planner, for checks it derived wrongly, for exactly this content.
+    edit(root, 2)
+    fp = status()["fp"]
+    ledger = sb.state / (hashlib.sha256(os.path.realpath(root).encode()).hexdigest()[:16] + ".jsonl")
+    old = [("docker compose -f compose.ipqs.yaml config -q", "."), ("docker build -f web/Dockerfile .", "."),
+           ("uv run pytest -q", "backend")]
+    if make:
+        old.append(("make lint", "."))
+    t0 = time.time() - 120
+    with ledger.open("a") as fh:
+        fh.write(json.dumps({"ts": t0, "fp": fp, "name": "plan", "kind": "plan", "status": "plan", "base": None,
+                             "changed": None, "required": [{"key": f"{c}\0{c}\0{d}", "label": c, "kind": "cmd",
+                                                            "cmd": c, "cwd": d} for c, d in old],
+                             "unsupported": [], "skipped": [], "remote_only": [], "act": {}}) + "\n")
+        for n, (c, d) in enumerate(old):
+            fh.write(json.dumps({"ts": t0 + 1 + n, "fp": fp, "name": c, "kind": "cmd", "status": "fail",
+                                 "detail": "exit 1", "exit": 1, "cmd": c, "cwd": d}) + "\n")
+    check(not status()["ok"], "before the corrected plan runs, the old failures block")
+    r = sb.lci(root, "auto")
+    st = status()
+    sup = {u["name"] for u in st["superseded"]}
+    check(r.returncode == 0 and st["ok"] and "superseded" in r.stdout
+          and sup == {"docker compose -f compose.ipqs.yaml config -q", "docker build -f web/Dockerfile .",
+                      "uv run pytest -q [in backend]"},
+          "failures of checks only an older, incorrect plan required are superseded, visibly, and stop blocking",
+          r.stdout + str(st))
+    check(not any(s in st["passes"] for s in sup) and "now unsupported here: uv 0.12.10" in
+          next((u["reason"] for u in st["superseded"] if u["name"].startswith("uv run")), ""),
+          "a superseded failure is never a pass, and says what the current plan does with the check", str(st))
+    check(make is None or ("make lint" in st["passes"] and "make lint" not in sup),
+          "an old failure of a check the corrected plan still requires is not superseded: it had to pass again",
+          str(st))
+    sb.git(root, "add", "-A")
+    sb.git(root, "commit", "-qm", "validated")
+    out = sb.hook_out(GATE_HOOK, "git push origin HEAD", root) or {}
+    check("permissionDecision" not in out, "...and the push gate allows the corrected, validated content", str(out))
+
+    # Kept blocking: a check the current plan lists unsupported for an environment reason (terraform not
+    # installed here) although an older plan required it; a failure no plan required; one recorded after
+    # the corrected plan existed.
+    tf = "terraform fmt -check -recursive"
+    with ledger.open("a") as fh:
+        fh.write(json.dumps({"ts": t0 - 10, "fp": fp, "name": "plan", "kind": "plan", "status": "plan", "base": None,
+                             "changed": None, "required": [{"key": f"{tf}\0{tf}\0.", "label": tf, "kind": "cmd",
+                                                            "cmd": tf, "cwd": "."}],
+                             "unsupported": [], "skipped": [], "remote_only": [], "act": {}}) + "\n")
+        fh.write(json.dumps({"ts": t0 - 5, "fp": fp, "name": tf, "kind": "cmd", "status": "fail",
+                             "detail": "exit 3", "exit": 3, "cmd": tf, "cwd": "."}) + "\n")
+        for name, c in (("manual-check", "./scripts/x.sh"),
+                        ("docker compose -f compose.ipqs.yaml config -q", "docker compose -f compose.ipqs.yaml config -q")):
+            fh.write(json.dumps({"ts": time.time(), "fp": fp, "name": name, "kind": "cmd", "status": "fail",
+                                 "detail": "exit 1", "exit": 1, "cmd": c, "cwd": "."}) + "\n")
+    r = sb.lci(root, "auto")
+    st = status()
+    check(r.returncode == 1 and tf in st["blocking"] and tf not in {u["name"] for u in st["superseded"]},
+          "an old failure of a check now unsupported for an environment reason (tool missing) keeps blocking",
+          str(st))
+    check({"manual-check", "docker compose -f compose.ipqs.yaml config -q"} <= set(st["blocking"]),
+          "a failure no older plan required, or recorded once the corrected plan existed, keeps blocking", str(st))
+    check(sb.hook(GATE_HOOK, "git push origin HEAD", root) == "deny", "...and the push gate denies it")
+
+
+def scenario_specifiers(sb: Sandbox) -> None:
+    """uv's required-version, read as uv reads it: PEP 440 specifiers on release numbers, uv.toml before
+    pyproject.toml, the nearest file up to the repository root, and no verdict when unreadable."""
+    loader = importlib.machinery.SourceFileLoader("local_ci_under_test", str(LOCAL_CI))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None  # a SourceFileLoader always yields a spec
+    lci = importlib.util.module_from_spec(spec)
+    sys.dont_write_bytecode = True  # no bin/__pycache__ next to the script, where the installer would copy it
+    loader.exec_module(lci)
+    for version, spec, want in (
+            ("0.13.5", ">=0.13.5", True), ("0.13.4", ">=0.13.5", False), ("0.12.10", ">=0.13.5", False),
+            ("0.13.6", ">=0.13,<0.14", True), ("0.14.0", ">=0.13,<0.14", False), ("0.13", "==0.13.0", True),
+            ("0.13.6", "0.13.6", True), ("0.13.7", "0.13.6", False), ("0.13.9", "==0.13.*", True),
+            ("0.14.0", "==0.13.*", False), ("0.14.0", "!=0.13.*", True), ("0.13.9", "~=0.13.5", True),
+            ("0.14.0", "~=0.13.5", False), ("0.13.4", "~=0.13.5", False), ("1.2", "~=1.0", True),
+            ("2.0", "~=1.0", False), ("0.13.6", "<=0.13.6", True), ("0.13.6", ">0.13.6", False),
+            ("0.13.6", "!=0.13.6", False), ("0.13.6", ">= 0.13.5 , < 1", True),
+            ("0.13.6", "~=1", None), ("0.13.6", ">=0.13.5;python_version>'3'", None), ("dev", ">=0.1", None),
+            ("0.13.6", "", None), ("0.13.6", ">=0.13.*", None)):
+        got = lci.satisfies(version, spec)
+        check(got is want, f"satisfies({version!r}, {spec!r}) is {want}", f"got {got}")
+
+    # On the default branch itself, so the merge base holds exactly what is committed.
+    root = sb.repo("uvspec", {"uv.toml": 'required-version = ">=0.13"\n', "pkg/sub/x.py": "",
+                              "pkg/pyproject.toml": '[project]\nname = "p"\ntool = "not a table"\n'})
+    lci._UV_VERSION[:] = ["0.12.10"]
+
+    def commit(files: dict[str, str]) -> None:
+        for rel, text in files.items():
+            (root / rel).write_text(text)
+        sb.git(root, "add", "-A")
+        sb.git(root, "commit", "-qm", "x")
+
+    gap = lci.uv_version_gap(str(root), "pkg/sub") or ""
+    check("'>=0.13'" in gap and "in uv.toml" in gap,
+          "a pyproject.toml without [tool.uv] (even a malformed `tool`) is passed over for the nearest uv config", gap)
+    commit({"pkg/uv.toml": 'required-version = ">=9"\n',
+            "pkg/pyproject.toml": '[project]\nname = "p"\n[tool.uv]\nrequired-version = "==0.12.*"\n'})
+    gap = lci.uv_version_gap(str(root), "pkg") or ""
+    check("'>=9'" in gap and "pkg/uv.toml" in gap, "uv.toml shadows [tool.uv] in the same directory", gap)
+    commit({"pkg/uv.toml": 'cache-dir = ".cache"\n'})
+    check(lci.uv_version_gap(str(root), "pkg") is None,
+          "the nearest uv config decides alone: no required-version there means none, not the root's")
+    lci._UV_VERSION[:] = [None]
+    check(lci.uv_version_gap(str(root), ".") is None,
+          "an unreadable `uv --version` makes no verdict: the check runs and its own result counts")
+
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="local-ci-test-") as tmp:
         sb = Sandbox(pathlib.Path(tmp).resolve())
         sb.stub("gh", GH_STUB)
         for scenario in (scenario_evidence, scenario_act, scenario_stacks, scenario_git_hooks,
-                         scenario_gate_table, scenario_installer, scenario_auto, scenario_capabilities):
+                         scenario_gate_table, scenario_installer, scenario_auto, scenario_capabilities,
+                         scenario_discovery, scenario_specifiers):
             if VERBOSE:
                 print((scenario.__doc__ or "").splitlines()[0])
             try:

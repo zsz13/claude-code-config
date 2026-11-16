@@ -22,7 +22,9 @@ and records it for that content. A rev is publishable when exactly its committed
 plan, every check the plan requires passed, at least one check passed, and no check failed or
 modified the tree without passing since. A check is identified by its name, command and directory,
 so another command under a failed check's name does not clear it, an unrelated pass never stands in
-for a required check, and an unsupported result never counts as a pass.
+for a required check, and an unsupported result never counts as a pass. The one way a failure stops
+blocking without a pass: a check that only a plan from an older PLANNER required, which the current
+plan no longer derives, is recorded as superseded by `auto` (see supersede()).
 
 Exit: 0 pass/publishable, 1 failure/not publishable, 2 usage error, 3 nothing ran (unsupported,
 unavailable). State: $LOCAL_CI_STATE_DIR, else ~/.cache/claude-hooks/local-ci (records older than 30
@@ -53,6 +55,9 @@ EXIT_OK, EXIT_FAIL, EXIT_USAGE, EXIT_UNSUPPORTED = 0, 1, 2, 3
 KEEP_DAYS = 30
 HOOK_MARKER = "# local-ci pre-push gate"
 BLOCKING = ("fail", "changed")
+# Bump when discovery stops deriving a check it used to (wrongly) derive. Before 2: compose overrides
+# validated alone, Dockerfiles built from the repository root, `uv run` checks under an incompatible uv.
+PLANNER = 2
 
 
 # ---------------------------------------------------------------- git and fingerprints
@@ -229,6 +234,11 @@ def summarize(records: list[dict], fp: str) -> dict[str, tuple[dict, bool]]:
     out: dict[str, tuple[dict, bool]] = {}
     for r in sorted((r for r in records if r.get("fp") == fp and r.get("kind") != "plan"), key=lambda r: r.get("ts", 0)):
         prev, blocked = out.get(key(r), (r, False))
+        if r["status"] == "superseded":
+            # supersede(): only the exact failure it names, of a check a corrected plan no longer requires
+            if prev is not r and r.get("supersedes") == prev.get("ts"):
+                out[key(r)] = (r, False)
+            continue
         if r["status"] == "unsupported" and prev is not r and prev["status"] != "unsupported":
             # reclassify(): the same log, read by the current classifier, replaces that one record
             if not (r.get("supersedes") == prev.get("ts") and r.get("log") and r.get("log") == prev.get("log")):
@@ -257,6 +267,7 @@ def verdict(records: list[dict], fp: str) -> dict:
     blocking = [label(r) for r, b in cur if b]
     unsupported = [{"name": label(r), "reason": r.get("detail", "")} for r, b in cur
                    if r["status"] == "unsupported" and not b]
+    superseded = [{"name": label(r), "reason": r.get("detail", "")} for r, b in cur if r["status"] == "superseded"]
     plan = latest_plan(records, fp)
     missing = []
     for req in (plan or {}).get("required", []):
@@ -286,7 +297,7 @@ def verdict(records: list[dict], fp: str) -> dict:
         why = ""
     return {"fp": fp, "ok": plan is not None and bool(passes) and not blocking and not missing, "passes": passes,
             "blocking": blocking, "missing": missing, "unsupported": unsupported, "planned": plan is not None,
-            "skipped": (plan or {}).get("skipped", []), "why": why}
+            "skipped": (plan or {}).get("skipped", []), "superseded": superseded, "why": why}
 
 
 def record(root: str, fp: str, name: str, kind: str, status: str, **extra) -> None:
@@ -308,6 +319,64 @@ def package_manager(root: Path, pkg: dict) -> str:
         if (root / lock).exists():
             return pm
     return str(pkg.get("packageManager", "npm")).split("@", 1)[0] or "npm"
+
+
+COMPOSE_BASES = ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")  # Compose's own order
+
+
+def compose_build_contexts(root: Path, compose: list[str]) -> dict[str, str]:
+    """Dockerfile -> build context, as the repository's compose files declare them (`build: DIR`, or
+    `build:` with `context:` and `dockerfile:`), both relative to the repository root."""
+    out: dict[str, str] = {}
+    for f in compose:
+        lines = [strip_comment(x) for x in read_text(root / f).splitlines()]
+        _, lo, hi = children(lines, 0, len(lines)).get("services", ("", 0, 0))
+        for _, slo, shi in children(lines, lo, hi).values():
+            value, blo, bhi = children(lines, slo, shi).get("build", ("", 0, 0))
+            spec = children(lines, blo, bhi) if not value else {}
+            ctx = (value or spec.get("context", ("",))[0]).strip("'\"")
+            dockerfile = spec.get("dockerfile", ("Dockerfile",))[0].strip("'\"") or "Dockerfile"
+            if not ctx or "$" in ctx or "://" in ctx or ctx.startswith("git@") or os.path.isabs(dockerfile):
+                continue
+            ctx = os.path.normpath(ctx)
+            real = (root / ctx).resolve()  # a symlinked context must not lead out of the repository
+            if not ctx.startswith("..") and real.is_dir() and (real == root.resolve() or root.resolve() in real.parents):
+                out.setdefault(os.path.normpath(os.path.join(ctx, dockerfile)), ctx)
+    return out
+
+
+def docker_context(root: Path, dockerfile: str, contexts: dict[str, str]) -> str:
+    """The build context of a tracked Dockerfile: the one a compose file builds it with; otherwise its
+    own directory, unless every source its COPY/ADD lines name exists only from the repository root."""
+    if dockerfile in contexts:
+        return contexts[dockerfile]
+    here = os.path.dirname(dockerfile) or "."
+    if here == ".":
+        return "."
+    sources = []
+    for line in re.sub(r"\\\n", " ", read_text(root / dockerfile)).splitlines():
+        m = re.match(r"(?i)^\s*(?:COPY|ADD)\s+(.*)$", line)
+        if not m or "--from" in m.group(1) or "<<" in m.group(1):
+            continue
+        rest = m.group(1).strip()
+        try:
+            words = json.loads(rest) if rest.startswith("[") else [w for w in shlex.split(rest) if not w.startswith("--")]
+        except ValueError:
+            continue
+        sources += [w.lstrip("/") or "." for w in words[:-1] if isinstance(w, str) and "$" not in w
+                    and "://" not in w and not w.startswith("git@")]
+    # A wildcard that matches nothing is allowed (`COPY package.json yarn.lock* ./`): only literal
+    # sources must exist; a Dockerfile copying through wildcards alone needs one of them to match.
+    literal = [s for s in sources if not any(c in s for c in "*?[")]
+
+    def present(base: Path) -> bool:
+        try:
+            if literal:
+                return all((base / s).exists() for s in literal)
+            return any(any(base.glob(s)) for s in sources)
+        except (OSError, ValueError, NotImplementedError):
+            return False
+    return "." if sources and present(root) and not present(root / here) else here
 
 
 def discover_checks(root: Path) -> list[dict]:
@@ -391,15 +460,22 @@ def discover_checks(root: Path) -> list[dict]:
                        "commands": [f"{tfbin} fmt -check -recursive", f"{tfbin} init -backend=false && {tfbin} validate"],
                        "notes": ["never apply/destroy: plan only, and only with the user's go-ahead for real backends"]})
 
+    compose = [f for f in tracked if "/" not in f and re.fullmatch(r"(docker-)?compose[\w.-]*\.ya?ml", f)]
     dockerfiles = [f for f in tracked if re.fullmatch(r"Dockerfile(\.\w+)?|.*\.dockerfile", f.rsplit("/", 1)[-1])][:5]
     if dockerfiles:
+        contexts = compose_build_contexts(root, compose)
         stacks.append({"stack": "docker", "evidence": ", ".join(dockerfiles),
-                       "commands": [f"docker build -f {shlex.quote(d)} ." for d in dockerfiles],
+                       "commands": [f"docker build -f {shlex.quote(d)} {shlex.quote(docker_context(root, d, contexts))}"
+                                    for d in dockerfiles],
                        "notes": ["expensive: build only when the image or its inputs changed"]})
-    compose = [f for f in tracked if "/" not in f and re.fullmatch(r"(docker-)?compose[\w.-]*\.ya?ml", f)]
     if compose:
+        # Compose merges an override onto the base file (`-f base -f override`); alone, an override's
+        # services have no image or build and the file is not a project. Validate it the way it is used.
+        base = next((b for b in COMPOSE_BASES if b in compose), None)
         stacks.append({"stack": "docker compose", "evidence": ", ".join(compose),
-                       "commands": [f"docker compose -f {shlex.quote(c)} config -q" for c in compose], "notes": []})
+                       "commands": ["docker compose " + " ".join(f"-f {shlex.quote(f)}" for f in (
+                           [c] if base is None or c in COMPOSE_BASES else [base, c])) + " config -q" for c in compose],
+                       "notes": [f"overrides validated merged onto {base}"] if base and len(compose) > 1 else []})
 
     if (root / ".pre-commit-config.yaml").exists():
         stacks.append({"stack": "pre-commit", "evidence": ".pre-commit-config.yaml",
@@ -878,8 +954,19 @@ NO_SOCKET = re.compile(r"/var/run/docker\.sock: connect: no such file or directo
 FAILURE_MARK = re.compile(r"(?i)\b(?:fail(?:s|ed|ure|ures|ing)?|errors?|assert\w*|traceback|panic\w*|exception|"
                           r"not ok)\b|[✗✘✖✕]")
 PROPAGATED = re.compile(r"^make(?:\[\d+\])?: \*\*\* .*\bError \d+$|^Error: Process completed with exit code \d+")
+# A setup or cache action's post-job cache save, which act cannot do as GitHub does: act's cache server
+# sits on the host (unreachable from the job's isolated network) and the work tree lives on act's own
+# volume, so the package manager's store is not where the action computed it. Only the post step of
+# such an action, and only these lines. A cache path the job never fills fails that post step on GitHub
+# too; under act the two cannot be told apart, so it is unsupported (never a pass) and GitHub decides.
+CACHE_POST = re.compile(r"^Post (?:actions/(?:cache|setup-(?:node|python|go|java|dotnet))|astral-sh/setup-uv|"
+                        r"ruby/setup-ruby)@")
+CACHE_SAVE = re.compile(r"(?:Failed to save: )?(?:Path Validation Error: Path\(s\) specified in the action for caching "
+                        r"do\(es\) not exist|getCacheEntry failed|reserveCache failed|Unable to reserve cache|"
+                        r"Cache service responded with \d+)")
+ANNOTATION = re.compile(r"::(?:error|warning|notice)[^:]*::")
 CAPABILITY_LEAD = "missing runner capability, not a code failure - "
-CLASSIFIER = 2  # act results recorded before 2 did not tell missing runner capabilities from failures
+CLASSIFIER = 3  # before 2: missing runner capabilities read as failures; before 3: act's post-job cache saves
 JOB_OK = re.compile(r"^\[([^\]]*)\].*Job succeeded", re.M)
 SECRETISH = re.compile(r"(?:^|/)(?:\.env(?:\..+)?|\.secrets?|\.vars|\.netrc|\.npmrc|\.pypirc|credentials[^/]*|"
                        r"id_(?:rsa|dsa|ecdsa|ed25519)[^/]*|[^/]*\.(?:pem|key|p12|pfx|kdbx))$")
@@ -1028,7 +1115,7 @@ def failed_steps(log: str) -> list[tuple[str, list[str]]]:
     return out
 
 
-def capability_gap(lines: list[str], own_image: bool = False) -> str | None:
+def capability_gap(lines: list[str], own_image: bool = False, step: str = "") -> str | None:
     """Why a failed step is the runner's and not the code's, or None. Every failure-looking line of the
     step's own output, annotations (`::error`) included, must be the capability signature itself or make
     passing its exit on. In a job that names its own `container:` image, a program missing there is
@@ -1043,6 +1130,10 @@ def capability_gap(lines: list[str], own_image: bool = False) -> str | None:
             why = why or f"the act runner image could not start `{nf.group(1)}` for this step (GitHub's runner has it)"
         elif ns:
             why = why or "the step needs the Docker engine, which the job is not given (no socket without isolation)"
+        elif CACHE_POST.match(step) and CACHE_SAVE.search(text) \
+                and not FAILURE_MARK.search(ANNOTATION.sub("", CACHE_SAVE.sub("", LINE_JOB.sub("", text)))):
+            why = why or ("its post-job dependency-cache save cannot work under act (act's cache server and work-tree "
+                          "volume are not GitHub's); a cache save, not a check")
         elif FAILURE_MARK.search(text) and not PROPAGATED.search(text):
             return None
     return why
@@ -1069,7 +1160,7 @@ def classify_act(rc: int, log: str, job: dict) -> tuple[str, str]:
         if ours:
             return "pass", "job succeeded under act"
         return "unsupported", "act exited 0 but this job did not run (skipped by `if:`?)" + (f" ({infra})" if infra else "")
-    gaps = [(name, capability_gap(block, bool(job.get("container")))) for name, block in failed_steps(log)]
+    gaps = [(name, capability_gap(block, bool(job.get("container")), name)) for name, block in failed_steps(log)]
     if gaps and all(why for _, why in gaps):
         return "unsupported", CAPABILITY_LEAD + "; ".join(f"{n}: {w}" for n, w in dict.fromkeys(gaps))
     if infra and not steps:
@@ -1101,6 +1192,39 @@ def reclassify(root: str, fp: str) -> list[str]:
                f"recorded before classifier {CLASSIFIER})", exit=rec["exit"], log=rec["log"], cmd=rec.get("cmd", ""),
                supersedes=rec["ts"], classifier=CLASSIFIER)
         notes.append(f"{rec['name']}: recorded fail -> unsupported; {detail} (log: {rec['log']})")
+    return notes
+
+
+def supersede(root: str, fp: str, plan: dict) -> list[str]:
+    """Failures for content fp of checks that a plan from an older PLANNER required and that the
+    current discovery derives differently: no longer at all (a compose override is now validated
+    merged, an image built from its own context), or as unsupported for a reason only the current
+    planner detects (marked `corrected`: a uv the project's required-version rejects). Each gets a
+    record naming the failure it supersedes and what the current plan does instead; never a pass.
+    Kept blocking: a failure of a check the current plan still requires; one the current plan lists
+    unsupported or skipped for any other reason (a tool or Docker now unavailable, a path filter, a
+    declaration), so an environment change never erases a failure; one recorded after a current plan
+    existed for fp; and any check no older plan required (`local-ci run` by hand)."""
+    records = read_records(root)
+    plans = [r for r in records if r.get("fp") == fp and r.get("kind") == "plan"]
+    current = [p["ts"] for p in plans if p.get("planner", 1) >= PLANNER]
+    if not current:
+        return []
+    old = {q["key"] for p in plans if p.get("planner", 1) < PLANNER for q in p.get("required", [])}
+    now = {q["key"] for q in plan["required"]}
+    listed = {u["name"]: u for u in plan["unsupported"] + plan["skipped"] + plan["remote_only"]}
+    notes = []
+    for rec, blocked in summarize(records, fp).values():
+        k, entry = key(rec), listed.get(label(rec))
+        if not blocked or k not in old or k in now or rec.get("ts", 0) >= min(current) \
+                or (entry is not None and not entry.get("corrected")):
+            continue
+        why = (f"required only by a plan from an older local-ci (planner < {PLANNER}), which derived it wrongly; "
+               + (f"now unsupported here: {entry['reason']}" if entry else
+                  "the current plan no longer derives it (a corrected form of it is required instead)"))
+        record(root, fp, rec["name"], rec.get("kind", "cmd"), "superseded", detail=why, cmd=rec.get("cmd", ""),
+               supersedes=rec["ts"], planner=PLANNER, **({"cwd": rec["cwd"]} if "cwd" in rec else {}))
+        notes.append(f"{label(rec)}: recorded {rec['status']} -> superseded; {why}")
     return notes
 
 
@@ -1446,6 +1570,8 @@ def describe(v: dict, label: str) -> list[str]:
         out.append("  required, not passed: " + ", ".join(v["missing"]))
     for u in v["unsupported"]:
         out.append(f"  unverified locally: {u['name']} - {u['reason']}")
+    for u in v.get("superseded", []):
+        out.append(f"  superseded (never a pass): {u['name']} - {u['reason']}")
     return out
 
 
@@ -1674,6 +1800,130 @@ def missing_tools(root: str, cmd: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def release(v: str) -> tuple[int, ...] | None:
+    m = re.match(r"^v?(\d+(?:\.\d+)*)", v.strip())
+    return tuple(int(x) for x in m.group(1).split(".")) if m else None
+
+
+def satisfies(version: str, spec: str) -> bool | None:
+    """Whether a release version meets a PEP 440 specifier set (`>=0.13.5,<0.14`, `==0.13.*`, `~=0.13`,
+    a bare version meaning ==), comparing release numbers only. None when either cannot be read."""
+    have = release(version)
+    if have is None or not spec.strip():
+        return None
+    for clause in spec.split(","):
+        m = re.fullmatch(r"\s*(~=|===|==|!=|<=|>=|<|>)?\s*v?([\d.]+)(\.\*)?\s*", clause)
+        if not m or not (want := release(m.group(2))):
+            return None
+        op = m.group(1) or "=="
+        n = max(len(have), len(want))
+        h, w = have + (0,) * (n - len(have)), want + (0,) * (n - len(want))
+
+        def starts(prefix: tuple[int, ...]) -> bool:
+            return h[:len(prefix)] == prefix
+        if m.group(3):  # ==X.Y.* / !=X.Y.*
+            if op not in ("==", "!="):
+                return None
+            ok = starts(want) == (op == "==")
+        elif op == "~=":  # ~=X.Y.Z: >=X.Y.Z, ==X.Y.*; PEP 440 needs two release segments
+            if len(want) < 2:
+                return None
+            ok = h >= w and starts(want[:-1])
+        else:
+            ok = {"==": h == w, "===": h == w, "!=": h != w, "<=": h <= w, ">=": h >= w, "<": h < w, ">": h > w}[op]
+        if not ok:
+            return False
+    return True
+
+
+_UV_VERSION: list[str | None] = []
+
+
+def uv_settings(text: str, name: str) -> dict | None:
+    """The uv settings table of a uv.toml or pyproject.toml text, or None when it has none."""
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return None
+    if name == "uv.toml":
+        return data
+    tool = data.get("tool")
+    return tool.get("uv") if isinstance(tool, dict) and isinstance(tool.get("uv"), dict) else None
+
+
+def required_uv(text: str, name: str) -> str | None:
+    table = uv_settings(text, name)
+    spec = table.get("required-version") if table else None
+    return spec if isinstance(spec, str) else None
+
+
+def uv_version_gap(root: str, here: str) -> str | None:
+    """Why the uv here cannot run this project's `uv run` checks, or None. uv reads its settings from
+    the nearest directory, up to the repository root, holding a uv.toml or a pyproject.toml with a
+    [tool.uv] table (uv.toml shadows [tool.uv] beside it), and refuses to run when the installed uv
+    does not satisfy their `required-version`: the tool is effectively missing, so the check is
+    unsupported here, not a failure of the code. Only when the merge base with the default branch
+    has the same `required-version`: a change that adds or edits it cannot turn its own checks
+    unsupported (they stay required, and uv's refusal fails them), as with `.local-ci.json`."""
+    d = Path(root, here).resolve()
+    top = Path(root).resolve()
+    found = None
+    while found is None:
+        for name in ("uv.toml", "pyproject.toml"):
+            text = read_text(d / name)
+            if (d / name).is_file() and uv_settings(text, name) is not None:
+                found = (name, os.path.relpath(d / name, top), required_uv(text, name))
+                break
+        if found or d == top or top not in d.parents:
+            break
+        d = d.parent
+    if not found or found[2] is None:
+        return None
+    name, source, spec = found
+    base = default_branch(root)
+    mb = git_s(root, "merge-base", "HEAD", base, check=False) if base else ""
+    base_text = git(root, "show", f"{mb}:{Path(source).as_posix()}", check=False).decode(errors="replace") if mb else ""
+    if required_uv(base_text, name) != spec:
+        return None
+    if not _UV_VERSION:
+        try:
+            out = subprocess.run(["uv", "--version"], capture_output=True, text=True, timeout=20).stdout
+        except (OSError, subprocess.SubprocessError):
+            out = ""
+        _UV_VERSION.append(m.group(1) if (m := re.search(r"\buv (\d[\w.+-]*)", out)) else None)
+    have = _UV_VERSION[0]
+    if have is None or satisfies(have, spec) is not False:
+        return None
+    return (f"uv {have} here does not satisfy required-version {spec!r} in {source}, so uv refuses to run "
+            f"this check; install a matching uv to run it here")
+
+
+def toolchain_note(root: str, cmd: str, local: dict[str, str]) -> str:
+    """For a `uv run TOOL` check that cannot run here: the required root Makefile targets that run TOOL
+    through the repository's own toolchain. Evidence for those targets, not for this command."""
+    words = cmd.split()
+    tool = words[2] if len(words) > 2 and words[:2] == ["uv", "run"] else ""
+    variables, rules, _ = read_makefile(Path(root))
+    hits = []
+    for c in local.values():
+        if not tool or not c.startswith("make ") or len(c.split()) != 2:
+            continue
+        todo, seen, text = [c.split()[1]], set(), []
+        while todo:
+            t = todo.pop()
+            if t in seen or t not in rules:
+                continue
+            seen.add(t)
+            todo += rules[t][0]
+            text += [make_expand(x, variables) for x in rules[t][1]]
+        if any(re.search(rf"(?:^|[\s'\"]){re.escape(tool)}(?=[\s'\"]|$)", x) for x in text):
+            hits.append(c)
+    one = len(hits) == 1
+    return (f"; `{'`, `'.join(hits)}` {'runs' if one else 'run'} {tool} through the repository's own toolchain and "
+            f"{'is a required check' if one else 'are required checks'} (evidence for "
+            f"{'that target' if one else 'those targets'}, not for this exact command)") if hits else ""
+
+
 # What an image build depends on beyond the source the language checks already cover.
 DOCKER_INPUTS = re.compile(r"(?:^|/)(?:Dockerfile[^/]*|[^/]*\.dockerfile|\.dockerignore|(?:docker-)?compose[^/]*\.ya?ml|"
                            r"package(?:-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|pyproject\.toml|uv\.lock|"
@@ -1767,6 +2017,7 @@ def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tu
     unsupported: list[dict] = []
     remote: list[dict] = []
     local: dict[str, str] = {}
+    uv_gaps: list[tuple[int, str]] = []
     declared, skipped = declaration(root)
     items = list(dict.fromkeys((c, d) for d in ["."] + package_dirs(root, changed)
                                for s in discover_checks(Path(root, d)) if d == "." or s["stack"] in PACKAGE_STACKS
@@ -1782,6 +2033,10 @@ def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tu
         miss = missing_tools(os.path.join(root, d), c)
         if miss:
             unsupported.append({"name": lbl, "reason": "not installed here: " + ", ".join(miss)})
+            continue
+        if c.startswith("uv ") and (gap := uv_version_gap(root, d)):
+            uv_gaps.append((len(unsupported), c))  # the toolchain note needs every local check: added below
+            unsupported.append({"name": lbl, "reason": gap, "corrected": PLANNER})  # see supersede()
             continue
         # A discovered command that starts Docker through make or a script runs on the developer's own
         # daemon, where a pinned compose project reuses (or `down -v` deletes) their containers and volumes.
@@ -1804,6 +2059,8 @@ def build_plan(root: str, *, docker_socket: bool = False) -> tuple[dict, list[tu
                          "cmd": c, "cwd": d})
         if d == ".":
             local[norm_cmd(c)] = c
+    for i, c in uv_gaps:
+        unsupported[i]["reason"] += toolchain_note(root, c, local)
 
     candidates = []
     for wf in discover_workflows(Path(root)):
@@ -1899,7 +2156,12 @@ def cmd_auto(args, root: str) -> int:
         print("\nRead again from their logs (every failed step lacked a runner capability; never a pass):")
         for n in notes:
             print(f"  {n}")
-    record(root, fp, "plan", "plan", "plan", **plan)
+    record(root, fp, "plan", "plan", "plan", planner=PLANNER, **plan)
+    notes = supersede(root, fp, plan)
+    if notes:
+        print("\nFailures of checks only an older, incorrect plan required (recorded as superseded; never a pass):")
+        for n in notes:
+            print(f"  {n}")
 
     print("\nRunning the repository's checks, cheapest first:")
     failed = []

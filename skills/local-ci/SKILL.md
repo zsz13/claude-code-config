@@ -66,8 +66,21 @@ lint, types, tests, builds, e2e and image builds), then the workflow jobs under
 act — deferred while a local check is failing (`--keep-going` runs them anyway).
 A check that modifies files is recorded `changed`, not a pass, and stops the run.
 A `docker build` is required only when a Dockerfile, compose file or dependency
-manifest changed. Exit 0 means every required check passed for exactly this
-content.
+manifest changed. It builds from the context a compose file declares for that
+Dockerfile, otherwise from the Dockerfile's own directory, unless what its
+`COPY`/`ADD` lines name exists only from the repository root (a wildcard
+matching nothing is optional, as in BuildKit). A compose
+override (any compose file next to `compose.yaml` or another base file) is
+validated merged onto the base, `docker compose -f base -f override config -q`,
+as Compose uses it; alone, its services have no image and it is not a project.
+A `uv run` check whose project sets a `required-version` the installed uv does
+not satisfy is unsupported, both versions named (uv refuses to run, so the tool
+is effectively missing); the plan names the required Makefile targets that run
+the same tool through the repository's own toolchain. That applies only when
+the merge base has the same `required-version`: one the change adds or edits
+keeps its checks required, so a change cannot make its own checks unsupported.
+Exit 0 means every
+required check passed for exactly this content.
 
 On a failure: read the log it names, fix the cause, run `auto` again. Checks
 that passed for unchanged content are not rerun; a fix changes the content, so
@@ -212,10 +225,14 @@ it). So:
   not the code, could not do it, in that step's own lines: act's own exec of
   the step could not find its program (`exec: "node": executable file not
   found` - act drops the image's tool path after a step adds to `PATH`), or the
-  step reached for the Docker socket the job was not given, with no other
-  failure line (a failed test, an assertion, an error) next to it. Anything
-  else, including `node` missing inside the code's own container, is a
-  *fail*.
+  step reached for the Docker socket the job was not given, or the `Post`
+  step of a setup or cache action (`actions/setup-*`, `actions/cache`,
+  `astral-sh/setup-uv`, `ruby/setup-ruby`) could not save its dependency cache
+  (`Path Validation Error`, cache service unreachable: act's cache server and
+  work-tree volume are not GitHub's), with no other failure line (a failed
+  test, an assertion, an error) next to it. Anything else, including `node`
+  missing inside the code's own container, a cache error in a `Main` step, or
+  the same message from any other action, is a *fail*.
 - **Direct checks prove** that the same command passed on this machine for this
   content; the plan names the commands an unsupported job shares with a local
   check. They do not prove the job: not its runner image, services, Docker
@@ -235,6 +252,18 @@ logs by `auto`, printed, and superseded only when every failed step shows a
 missing capability; the log, the old record and the new one stay in the
 ledger. A failure recorded by the current classifier is final until the same
 check passes.
+
+Discovery fixes work the same way. When a plan from an older local-ci required
+a check that the current plan no longer derives (it was derived wrongly: an
+override validated alone, an image built from the wrong context, a `uv run`
+under a uv the project rejects), `auto` records that check's failure for this
+content as *superseded*, prints it with what the current plan does instead,
+and `status` keeps listing it; it is never a pass. A failure stays blocking
+when the current plan still requires the check, lists it unsupported or
+skipped for any reason other than one the corrected discovery detects (a tool
+or Docker now unavailable, a path filter, a declaration), was recorded after a
+current plan existed for this content, or no older plan required it
+(`local-ci run` by hand).
 
 ## 5. Unsupported checks are reported, not passed
 
