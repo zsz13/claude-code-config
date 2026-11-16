@@ -1209,7 +1209,13 @@ for any saving in Actions minutes.
   script chain never run without an isolated daemon, a runner missing `node` or
   the Docker socket recorded unsupported while a genuine failing step in the
   same job stays a failure, pre-classifier failures reread only from their own
-  logs, secrets kept out of act's
+  logs, a setup action's post-job cache save recorded unsupported while a
+  failing check, another error or the same message elsewhere stays a failure,
+  compose overrides merged onto their base, image builds from their own
+  context, `uv run` checks under a uv the project's `required-version` rejects
+  reported unsupported, failures of checks only an older planner required
+  superseded while genuine and hand-run failures keep blocking, secrets kept
+  out of act's
   environment, existing hooks and `core.hooksPath` left alone, the installer,
   and the command table the hook decides. `scripts/verify.sh` runs it.
 - **Network isolation, one real probe** (act 0.2.97, Docker Desktop, arm64

@@ -428,6 +428,42 @@ same data: act's default host network let a job open the developer's database
 port, so jobs now run on a network of their own, and jobs with service
 containers (which need the host network) are left to GitHub.
 
+**Why discovery follows how a repository uses its files, and why a corrected
+plan can retire old failures.** The same application repository, whose tests
+all passed, stayed blocked by checks discovery had derived wrongly: each
+compose override validated on its own (its services have no image without the
+base file, so Compose rejects it), every Dockerfile built from the repository
+root although compose builds each from its own directory, and `uv run` checks
+run with a host uv older than the project's `required-version`, which uv
+refuses outright while the repository's Makefile ran the same tools through
+its Docker toolchain. Such a check is now unsupported rather than failed, but
+only when the base branch already pins the same `required-version`: review
+found that otherwise a change could pin an unreachable version and turn its
+own tests into "unsupported", the loosening `.local-ci.json` is read from the
+base branch to prevent. Its web job under act also failed only in
+`actions/setup-node`'s post-job cache save, because the job's isolated network
+cannot reach act's cache server and act's work-tree volume moves the package
+store. Each is now derived the way the repository uses it, and the cache save
+joins the runner signatures, under the same rule: only the post step of a
+setup or cache action, only those lines. Correcting discovery did not unblock
+the content on its own, because a failure blocks until the same check passes
+and a check that is no longer derived never runs again. Waiving failures that
+are absent from the latest plan would let an environment change (a tool
+uninstalled, so its check turns unsupported; Docker stopped, so an act job
+does) erase a genuine failure. So retirement needs both: the failure was
+recorded under an older planner version, and the current one either no longer
+derives the check at all or lists it unsupported for a reason only the new
+discovery detects (the uv version gap). A check now unsupported or skipped for
+any other reason keeps its failure. Each retirement is its own visible record,
+and never a pass. One residue is accepted: a check the older plan derived only
+because a since-moved base branch counted its package as changed would also
+drop out; it needs the same content, an older planner and a moved base at once.
+
+The cache save is the one signature that GitHub can share: a cache path the
+job never fills fails setup-node's post step there too. Under act the two are
+indistinguishable, so it is reported unsupported, never a pass, and the remote
+run decides.
+
 **What no configuration can do.** Whether a push triggers remote CI is decided
 by the repository's `.github/workflows`, not by anything in `~/.claude`. This
 setup reduces how often an agent pushes and makes each push count; reducing
